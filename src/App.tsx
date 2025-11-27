@@ -354,6 +354,19 @@ const App = () => {
     })
   }
 
+  const handleCardDeletion = (colId: string, cardId: string) => {
+    if (!window.confirm('Delete task?')) return
+    setBoards((prev) => {
+      const next = deepClone(prev)
+      const board = next.find((b) => b.id === activeBoardId)
+      if (!board) return prev
+      const col = board.columns.find((c) => c.id === colId)
+      if (!col) return prev
+      col.cards = col.cards.filter((c) => c.id !== cardId)
+      return next
+    })
+  }
+
   return (
     <div
       className={`relative z-10 min-h-screen font-sans transition-colors duration-300 ${darkMode ? 'dark' : ''}`}
@@ -551,6 +564,16 @@ const App = () => {
                             className="opacity-0 transition-opacity group-hover/card:opacity-100 text-muted-foreground hover:text-primary"
                           >
                             <Edit2 size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleCardDeletion(col.id, card.id)
+                            }}
+                            className="opacity-0 transition-opacity group-hover/card:opacity-100 text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 size={14} />
                           </button>
                         </div>
                         <h4 className="mb-2 font-semibold text-card-foreground">
