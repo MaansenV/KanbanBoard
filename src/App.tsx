@@ -545,36 +545,38 @@ const App = () => {
                         }}
                         className="group/card relative cursor-grab rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20"
                       >
-                        <div className="mb-3 flex items-start justify-between">
+                        <div className="mb-3 flex items-start justify-between gap-3">
                           <span
                             className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${PRIORITIES[card.priority]?.color}`}
                           >
                             {PRIORITIES[card.priority]?.icon}
                             {PRIORITIES[card.priority]?.label}
                           </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setModal({
-                                type: 'editCard',
-                                data: { boardId: activeBoardId, colId: col.id, card },
-                              })
-                            }}
-                            className="opacity-0 transition-opacity group-hover/card:opacity-100 text-muted-foreground hover:text-primary"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleCardDeletion(col.id, card.id)
-                            }}
-                            className="opacity-0 transition-opacity group-hover/card:opacity-100 text-muted-foreground hover:text-destructive"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover/card:opacity-100">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setModal({
+                                  type: 'editCard',
+                                  data: { boardId: activeBoardId, colId: col.id, card },
+                                })
+                              }}
+                              className="rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleCardDeletion(col.id, card.id)
+                              }}
+                              className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </div>
                         <h4 className="mb-2 font-semibold text-card-foreground">
                           {card.title}
