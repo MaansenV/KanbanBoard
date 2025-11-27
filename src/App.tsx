@@ -552,7 +552,7 @@ const App = () => {
                             {PRIORITIES[card.priority]?.icon}
                             {PRIORITIES[card.priority]?.label}
                           </span>
-                          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover/card:opacity-100">
+                          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/card:opacity-100">
                             <button
                               type="button"
                               onClick={(e) => {
@@ -562,7 +562,7 @@ const App = () => {
                                   data: { boardId: activeBoardId, colId: col.id, card },
                                 })
                               }}
-                              className="rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                              className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
                             >
                               <Edit2 size={14} />
                             </button>
@@ -572,7 +572,7 @@ const App = () => {
                                 e.stopPropagation()
                                 handleCardDeletion(col.id, card.id)
                               }}
-                              className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                              className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                             >
                               <Trash2 size={14} />
                             </button>
