@@ -3,42 +3,44 @@ import {
   Edit2,
   Moon,
   Plus,
-  Settings,
   Sun,
   Trash2,
   Upload,
   X,
+  Layout,
+  MoreHorizontal,
+  Calendar,
+  CheckCircle2,
+  AlertCircle,
+  Clock
 } from 'lucide-react'
 import type { FormEvent, ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const PRIORITIES = {
   low: {
-    label: 'LOW',
+    label: 'Low',
     value: 1,
-    color: 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
-    ascii: '(-)',
+    color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200/50 dark:border-emerald-500/20',
+    icon: <CheckCircle2 size={14} />,
   },
   medium: {
-    label: 'MED',
+    label: 'Medium',
     value: 2,
-    color:
-      'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-    ascii: '(o)',
+    color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200/50 dark:border-blue-500/20',
+    icon: <Clock size={14} />,
   },
   high: {
-    label: 'HGH',
+    label: 'High',
     value: 3,
-    color:
-      'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-    ascii: '(!)',
+    color: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200/50 dark:border-orange-500/20',
+    icon: <AlertCircle size={14} />,
   },
   critical: {
-    label: 'CRT',
+    label: 'Critical',
     value: 4,
-    color:
-      'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-    ascii: '(!!)',
+    color: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-200/50 dark:border-rose-500/20',
+    icon: <AlertCircle size={14} />,
   },
 } as const
 
@@ -92,104 +94,10 @@ const deepClone = <T,>(value: T): T =>
     ? structuredClone(value)
     : JSON.parse(JSON.stringify(value)) as T
 
-const ASCIIBackground = ({ darkMode }: { darkMode: boolean }) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    let animationFrameId: number
-    let time = 0
-    const chars = ['·', ',', '-', '~', '+', '*', '%', '&', '#', '@']
-
-    const resize = () => {
-      canvas.width = window.innerWidth
-      canvas.height = window.innerHeight
-    }
-
-    resize()
-    window.addEventListener('resize', resize)
-
-    const draw = () => {
-      const { width: w, height: h } = canvas
-      ctx.fillStyle = darkMode ? '#020617' : '#f8fafc'
-      ctx.fillRect(0, 0, w, h)
-
-      const fontSize = 12
-      const charWidth = fontSize * 0.6
-      ctx.font = `${fontSize}px monospace`
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-
-      const cols = Math.ceil(w / charWidth)
-      const rows = Math.ceil(h / fontSize)
-
-      for (let y = 0; y < rows; y += 1) {
-        for (let x = 0; x < cols; x += 1) {
-          const posX = x * charWidth
-          const posY = y * fontSize
-          const noiseX = x * 0.12
-          const noiseY = y * 0.12
-          const val =
-            Math.sin(noiseX + time * 0.5) +
-            Math.cos(noiseY + time * 0.3) +
-            Math.sin((noiseX + noiseY) * 0.5 + time)
-          const normVal = (val + 3) / 6
-          const isIsland = val > 0.8
-          const isDeepSea = val < -1.5
-
-          if (isDeepSea) continue
-
-          let alpha = 0.15
-          let color = darkMode ? '#475569' : '#cbd5e1'
-
-          if (darkMode) {
-            if (isIsland) {
-              color = '#ffffff'
-              alpha = Math.min((val - 0.5) * 0.9, 1)
-            }
-          } else if (isIsland) {
-            color = '#64748b'
-            alpha = 0.5
-          }
-
-          const charIndex = Math.floor(
-            Math.max(0, Math.min(1, normVal)) * (chars.length - 1),
-          )
-
-          ctx.globalAlpha = alpha
-          ctx.fillStyle = color
-          ctx.fillText(chars[charIndex], posX, posY)
-        }
-      }
-
-      time += 0.015
-      animationFrameId = requestAnimationFrame(draw)
-    }
-
-    draw()
-
-    return () => {
-      window.removeEventListener('resize', resize)
-      cancelAnimationFrame(animationFrameId)
-    }
-  }, [darkMode])
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="fixed top-0 left-0 h-full w-full -z-10 pointer-events-none transition-colors duration-500"
-    />
-  )
-}
-
 type ButtonProps = {
   children: ReactNode
   onClick?: () => void
-  variant?: 'primary' | 'danger' | 'ghost' | 'icon'
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'icon'
   className?: string
   disabled?: boolean
   type?: 'button' | 'submit'
@@ -204,15 +112,17 @@ const Button = ({
   type = 'button',
 }: ButtonProps) => {
   const baseStyle =
-    'px-4 py-2 text-sm font-mono border transition-all duration-200 flex items-center gap-2 select-none disabled:opacity-50 disabled:cursor-not-allowed rounded-md'
+    'px-4 py-2 text-sm font-medium transition-all duration-200 flex items-center gap-2 select-none disabled:opacity-50 disabled:cursor-not-allowed rounded-lg active:scale-95'
   const variants: Record<string, string> = {
     primary:
-      'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm',
+      'bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25',
+    secondary:
+      'bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border shadow-sm',
     danger:
-      'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40',
+      'bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20',
     ghost:
-      'bg-transparent border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800',
-    icon: 'p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400',
+      'bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+    icon: 'p-2 rounded-full hover:bg-accent text-muted-foreground hover:text-foreground',
   }
 
   return (
@@ -238,18 +148,18 @@ type ModalProps = {
 const Modal = ({ isOpen, onClose, title, children, darkMode }: ModalProps) => {
   if (!isOpen) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 dark:bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div
-        className={`w-full max-w-md transform rounded-lg border border-slate-200 bg-white/95 p-6 shadow-xl transition-all dark:border-slate-700 dark:bg-slate-900/95 backdrop-blur-md ${darkMode ? 'dark' : ''}`}
+        className={`w-full max-w-md transform rounded-2xl glass-panel p-6 transition-all animate-slide-up ${darkMode ? 'dark' : ''}`}
       >
-        <div className="mb-6 flex items-center justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
-          <h2 className="flex items-center gap-2 text-lg font-bold font-mono uppercase tracking-wider text-slate-800 dark:text-slate-100">
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-foreground">
             {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 transition-colors hover:text-slate-800 dark:hover:text-slate-200"
+            className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <X size={20} />
           </button>
@@ -278,13 +188,13 @@ const InputGroup = ({
   children,
 }: InputGroupProps) => (
   <div className="mb-4">
-    <label className="mb-1 flex items-center justify-between text-xs font-mono uppercase text-slate-500 dark:text-slate-400">
+    <label className="mb-1.5 flex items-center justify-between text-sm font-medium text-muted-foreground">
       {label}
       {children}
     </label>
     {type === 'textarea' ? (
       <textarea
-        className="w-full rounded border border-slate-200 bg-slate-50 p-2 font-sans text-slate-800 transition-all placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:placeholder:text-slate-600 dark:focus:ring-slate-600"
+        className="w-full rounded-lg border border-input bg-background/50 p-3 text-sm text-foreground transition-all placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
         rows={4}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -293,7 +203,7 @@ const InputGroup = ({
     ) : (
       <input
         type="text"
-        className="w-full rounded border border-slate-200 bg-slate-50 p-2 font-sans text-slate-800 transition-all placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:placeholder:text-slate-600 dark:focus:ring-slate-600"
+        className="w-full rounded-lg border border-input bg-background/50 p-3 text-sm text-foreground transition-all placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -337,24 +247,24 @@ const App = () => {
     const demoId = generateId()
     const demoBoard: Board = {
       id: demoId,
-      title: 'Launch Project',
+      title: 'Product Launch',
       columns: [
         {
           id: generateId(),
           title: 'To Do',
-          color: 'border-l-4 border-l-slate-400',
+          color: 'bg-slate-500',
           cards: [],
         },
         {
           id: generateId(),
           title: 'In Progress',
-          color: 'border-l-4 border-l-blue-400',
+          color: 'bg-blue-500',
           cards: [],
         },
         {
           id: generateId(),
           title: 'Done',
-          color: 'border-l-4 border-l-green-400',
+          color: 'bg-emerald-500',
           cards: [],
         },
       ],
@@ -446,28 +356,34 @@ const App = () => {
 
   return (
     <div
-      className={`min-h-screen font-sans selection:bg-indigo-100 transition-colors duration-300 ${darkMode ? 'dark text-slate-100' : 'text-slate-800'}`}
+      className={`relative z-10 min-h-screen font-sans transition-colors duration-300 ${darkMode ? 'dark' : ''}`}
     >
-      <ASCIIBackground darkMode={darkMode} />
+      <div className="fixed inset-0 -z-10 bg-background" />
+      <div className={`fixed inset-0 -z-10 ${darkMode ? 'bg-mesh' : 'bg-mesh-light'}`} />
 
-      <div className="mx-auto flex h-screen max-w-[1600px] flex-col p-6 md:p-8">
-        <header className="mb-6 flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="flex items-center gap-2 text-3xl font-black tracking-tighter">
-              <span className="text-4xl text-blue-600 dark:text-blue-400">::</span> KANBAN_OS
-            </h1>
-            <p className="mt-1 pl-1 text-xs font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400">
-              Local Productivity Environment
-            </p>
+      <div className="mx-auto flex h-screen max-w-[1800px] flex-col p-4 md:p-6 lg:p-8">
+        <header className="mb-6 flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between glass-panel rounded-2xl p-4 shadow-glass-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
+              <Layout size={20} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-foreground font-display">
+                Kanban<span className="text-primary">Flow</span>
+              </h1>
+              <p className="text-xs font-medium text-muted-foreground">
+                Workspace
+              </p>
+            </div>
           </div>
 
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => setDarkMode((prev) => !prev)} className="mr-2">
-              {darkMode ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} />}
-              {darkMode ? 'LIGHT' : 'DARK'}
+            <Button variant="ghost" onClick={() => setDarkMode((prev) => !prev)}>
+              {darkMode ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} />}
             </Button>
+            <div className="h-8 w-px bg-border mx-1" />
             <Button
-              variant="ghost"
+              variant="secondary"
               onClick={() => {
                 const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(boards))}`
                 const anchor = document.createElement('a')
@@ -476,7 +392,7 @@ const App = () => {
                 anchor.click()
               }}
             >
-              <Download size={14} /> SAVE
+              <Download size={16} /> Export
             </Button>
             <label className="cursor-pointer">
               <input
@@ -499,29 +415,23 @@ const App = () => {
                   reader.readAsText(file)
                 }}
               />
-              <Button variant="ghost">
-                <Upload size={14} /> LOAD
-              </Button>
+              <div className="px-4 py-2 text-sm font-medium transition-all duration-200 flex items-center gap-2 select-none rounded-lg active:scale-95 bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border shadow-sm cursor-pointer">
+                <Upload size={16} /> Import
+              </div>
             </label>
           </div>
         </header>
 
-        <div className="mb-8 flex gap-2 overflow-x-auto border-b border-slate-200/50 pb-2 dark:border-slate-700/50">
+        <div className="mb-6 flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
           {boards.map((board) => (
             <button
               key={board.id}
               onClick={() => setActiveBoardId(board.id)}
-              className={`relative top-[1px] flex items-center gap-2 rounded-t-lg px-4 py-2 text-sm font-mono transition-all ${
-                activeBoardId === board.id
-                  ? 'z-10 border border-slate-200 border-b-white bg-white text-slate-800 shadow-sm dark:border-slate-700 dark:border-b-slate-900 dark:bg-slate-900 dark:text-slate-100'
-                  : 'border border-transparent bg-slate-100/50 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:bg-slate-800/50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
-              }`}
+              className={`group relative flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${activeBoardId === board.id
+                ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
+                : 'bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground'
+                }`}
             >
-              {activeBoardId === board.id ? (
-                <span className="font-bold text-blue-500 dark:text-blue-400">&gt;</span>
-              ) : (
-                <span>#</span>
-              )}
               {board.title}
               {activeBoardId === board.id && (
                 <span
@@ -531,15 +441,9 @@ const App = () => {
                     e.stopPropagation()
                     handleBoardDeletion(board.id)
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      handleBoardDeletion(board.id)
-                    }
-                  }}
-                  className="ml-2 rounded-full p-1 text-slate-400 transition-all hover:bg-red-100 hover:text-red-500 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+                  className="ml-1 rounded-full p-0.5 text-primary-foreground/70 opacity-0 transition-all hover:bg-white/20 hover:text-white group-hover:opacity-100"
                 >
-                  <X size={12} />
+                  <X size={14} />
                 </span>
               )}
             </button>
@@ -547,15 +451,15 @@ const App = () => {
           <button
             type="button"
             onClick={() => setModal({ type: 'createBoard' })}
-            className="rounded-md px-3 py-2 text-slate-400 transition-colors hover:bg-white/50 hover:text-blue-600 dark:text-slate-500 dark:hover:bg-slate-800/50 dark:hover:text-blue-400"
+            className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-background/30 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary hover:bg-background/50 hover:text-primary"
           >
-            <Plus size={18} />
+            <Plus size={16} /> New Board
           </button>
         </div>
 
         {activeBoard ? (
-          <div className="flex-1 overflow-x-auto overflow-y-hidden">
-            <div className="flex h-full min-w-max gap-6 pb-4">
+          <div className="flex-1 overflow-x-auto overflow-y-hidden rounded-3xl glass-panel p-6">
+            <div className="flex h-full min-w-max gap-6">
               {activeBoard.columns.map((col) => (
                 <div
                   key={col.id}
@@ -567,14 +471,15 @@ const App = () => {
                     e.stopPropagation()
                     handleDropColumn(col.id)
                   }}
-                  className="group flex h-full w-80 flex-col rounded-xl border border-slate-200/60 bg-white/60 shadow-sm transition-shadow duration-300 hover:shadow-md dark:border-slate-700/60 dark:bg-slate-900/60 backdrop-blur-md"
+                  className="group flex h-full w-80 flex-col rounded-2xl bg-secondary/30 ring-1 ring-border"
                 >
-                  <div className={`flex cursor-grab items-center justify-between border-b border-b-slate-100 p-4 dark:border-b-slate-800 ${col.color}`}>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold uppercase tracking-tight text-slate-700 dark:text-slate-200">
+                  <div className="flex cursor-grab items-center justify-between p-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`h-3 w-3 rounded-full ${col.color}`} />
+                      <span className="font-bold text-foreground">
                         {col.title}
                       </span>
-                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-background/50 px-1.5 text-xs font-medium text-muted-foreground">
                         {col.cards.length}
                       </span>
                     </div>
@@ -584,9 +489,9 @@ const App = () => {
                         onClick={() =>
                           setModal({ type: 'editColumn', data: { boardId: activeBoardId, col } })
                         }
-                        className="p-1 text-slate-400 transition-colors hover:text-blue-500 dark:hover:text-blue-400"
+                        className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
                       >
-                        <Settings size={14} />
+                        <MoreHorizontal size={16} />
                       </button>
                       <button
                         type="button"
@@ -600,9 +505,9 @@ const App = () => {
                             return next
                           })
                         }}
-                        className="p-1 text-slate-400 transition-colors hover:text-red-500 dark:hover:text-red-400"
+                        className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
@@ -625,13 +530,13 @@ const App = () => {
                           e.stopPropagation()
                           handleDropCard(col.id, idx)
                         }}
-                        className="group/card relative cursor-grab rounded-lg border border-slate-100 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:ring-2 hover:ring-blue-400/20 dark:border-slate-700 dark:bg-slate-800 dark:hover:ring-blue-500/30"
+                        className="group/card relative cursor-grab rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20"
                       >
-                        <div className="mb-2 flex items-start justify-between">
+                        <div className="mb-3 flex items-start justify-between">
                           <span
-                            className={`text-[10px] font-mono font-bold uppercase tracking-wide px-2 py-0.5 rounded border ${PRIORITIES[card.priority]?.color ?? 'bg-slate-100 dark:bg-slate-800'} border-transparent`}
+                            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${PRIORITIES[card.priority]?.color}`}
                           >
-                            {PRIORITIES[card.priority]?.ascii}{' '}
+                            {PRIORITIES[card.priority]?.icon}
                             {PRIORITIES[card.priority]?.label}
                           </span>
                           <button
@@ -643,27 +548,32 @@ const App = () => {
                                 data: { boardId: activeBoardId, colId: col.id, card },
                               })
                             }}
-                            className="opacity-0 transition-opacity group-hover/card:opacity-100 text-slate-300 hover:text-blue-500 dark:text-slate-600 dark:hover:text-blue-400"
+                            className="opacity-0 transition-opacity group-hover/card:opacity-100 text-muted-foreground hover:text-primary"
                           >
-                            <Edit2 size={12} />
+                            <Edit2 size={14} />
                           </button>
                         </div>
-                        <h4 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
+                        <h4 className="mb-2 font-semibold text-card-foreground">
                           {card.title}
                         </h4>
                         {card.description && (
-                          <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+                          <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
                             {card.description}
                           </p>
                         )}
-                        <div className="pointer-events-none absolute -right-2 -bottom-2 z-0 select-none text-[40px] font-mono font-black text-slate-50 opacity-30 dark:text-slate-700/20">
-                          {idx < 9 ? `0${idx + 1}` : idx + 1}
+                        <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+                          <div className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
+                            <span>ID: {card.id.slice(0, 4)}</span>
+                          </div>
                         </div>
                       </div>
                     ))}
                     {col.cards.length === 0 && (
-                      <div className="flex h-24 flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-100 text-xs font-mono text-slate-300 dark:border-slate-800 dark:text-slate-600">
-                        <span>EMPTY</span>
+                      <div className="flex h-32 flex-col items-center justify-center rounded-xl border-2 border-dashed border-border text-sm font-medium text-muted-foreground">
+                        <div className="mb-2 rounded-full bg-secondary p-3">
+                          <Calendar size={20} />
+                        </div>
+                        <span>No tasks yet</span>
                       </div>
                     )}
                   </div>
@@ -672,19 +582,19 @@ const App = () => {
                     <button
                       type="button"
                       onClick={() => setModal({ type: 'createCard', data: { colId: col.id } })}
-                      className="flex w-full items-center justify-center gap-2 rounded-md border border-transparent py-2 text-sm font-mono text-slate-500 transition-colors hover:border-slate-200 hover:bg-white hover:text-slate-800 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
                     >
-                      <Plus size={14} /> NEW TASK
+                      <Plus size={16} /> Add Task
                     </button>
                   </div>
                 </div>
               ))}
 
-              <div className="h-full w-12 pt-4">
+              <div className="pt-4">
                 <button
                   type="button"
                   onClick={() => setModal({ type: 'createColumn' })}
-                  className="flex h-12 w-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white/20 text-slate-400 shadow-sm transition-all hover:bg-white hover:text-blue-500 hover:shadow-md dark:border-slate-600 dark:bg-slate-800/20 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+                  className="flex h-12 w-12 items-center justify-center rounded-xl border-2 border-dashed border-border bg-secondary/30 text-muted-foreground transition-all hover:border-primary hover:bg-background hover:text-primary hover:shadow-lg"
                 >
                   <Plus size={24} />
                 </button>
@@ -692,13 +602,18 @@ const App = () => {
             </div>
           </div>
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center text-slate-400 dark:text-slate-500">
-            <div className="mb-4 text-6xl font-mono text-slate-200 dark:text-slate-800">
-              _(:3」∠)_
+          <div className="flex flex-1 flex-col items-center justify-center rounded-3xl glass-panel text-muted-foreground">
+            <div className="mb-6 rounded-full bg-secondary p-8">
+              <Layout size={48} className="text-primary/50" />
             </div>
-            <p>No Board Selected.</p>
-            <Button className="mt-4" onClick={() => setModal({ type: 'createBoard' })}>
-              CREATE BOARD
+            <h2 className="mb-2 text-xl font-bold text-foreground">
+              No Board Selected
+            </h2>
+            <p className="mb-6 max-w-xs text-center text-sm">
+              Create a new board to get started with your projects.
+            </p>
+            <Button onClick={() => setModal({ type: 'createBoard' })}>
+              <Plus size={16} /> Create New Board
             </Button>
           </div>
         )}
@@ -809,12 +724,12 @@ const BoardForm = ({ isOpen, onClose, onSubmit, darkMode }: BoardFormProps) => {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="New Project" darkMode={darkMode}>
       <form onSubmit={handleSubmit}>
-        <InputGroup label="Name" value={title} onChange={setTitle} placeholder="Project Alpha" />
-        <div className="mt-6 flex justify-end gap-2">
+        <InputGroup label="Project Name" value={title} onChange={setTitle} placeholder="e.g. Website Redesign" />
+        <div className="mt-6 flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit">Create</Button>
+          <Button type="submit">Create Project</Button>
         </div>
       </form>
     </Modal>
@@ -839,22 +754,28 @@ const ColumnForm = ({
   darkMode,
 }: ColumnFormProps) => {
   const [title, setTitle] = useState('')
-  const [color, setColor] = useState('border-l-4 border-l-slate-400')
+  const [color, setColor] = useState('bg-slate-500')
 
   useEffect(() => {
     if (isOpen) {
       setTitle(initialData?.title ?? '')
-      setColor(initialData?.color ?? 'border-l-4 border-l-slate-400')
+      setColor(initialData?.color ?? 'bg-slate-500')
     }
   }, [isOpen, initialData])
 
   const colors = [
-    'border-l-4 border-l-slate-400',
-    'border-l-4 border-l-blue-400',
-    'border-l-4 border-l-emerald-400',
-    'border-l-4 border-l-orange-400',
-    'border-l-4 border-l-red-400',
-    'border-l-4 border-l-violet-400',
+    'bg-slate-500',
+    'bg-red-500',
+    'bg-orange-500',
+    'bg-amber-500',
+    'bg-emerald-500',
+    'bg-teal-500',
+    'bg-cyan-500',
+    'bg-blue-500',
+    'bg-indigo-500',
+    'bg-violet-500',
+    'bg-fuchsia-500',
+    'bg-rose-500',
   ]
 
   const handleSubmit = (e: FormEvent) => {
@@ -870,27 +791,27 @@ const ColumnForm = ({
       darkMode={darkMode}
     >
       <form onSubmit={handleSubmit}>
-        <InputGroup label="Title" value={title} onChange={setTitle} placeholder="e.g. Backlog" />
+        <InputGroup label="Column Title" value={title} onChange={setTitle} placeholder="e.g. In Review" />
         <div className="mb-6">
-          <label className="mb-2 block text-xs font-mono uppercase text-slate-500 dark:text-slate-400">
-            Color
+          <label className="mb-2 block text-sm font-medium text-muted-foreground">
+            Color Tag
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-3">
             {colors.map((val) => (
               <button
                 key={val}
                 type="button"
                 onClick={() => setColor(val)}
-                className={`h-8 w-8 rounded-full border-2 ${val.replace('border-l-4', 'bg-white dark:bg-slate-700').replace('border-l-', 'border-')} ${color === val ? 'ring-2 ring-slate-400 dark:ring-slate-500' : 'border-transparent'}`}
+                className={`h-8 w-8 rounded-full transition-all ${val} ${color === val ? 'ring-2 ring-slate-400 ring-offset-2 dark:ring-slate-500 dark:ring-offset-slate-800' : 'hover:scale-110'}`}
               />
             ))}
           </div>
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit">Save</Button>
+          <Button type="submit">Save Changes</Button>
         </div>
       </form>
     </Modal>
@@ -939,24 +860,24 @@ const CardForm = ({
       darkMode={darkMode}
     >
       <form onSubmit={handleSubmit}>
-        <InputGroup label="Title" value={title} onChange={setTitle} placeholder="Task name" />
+        <InputGroup label="Task Title" value={title} onChange={setTitle} placeholder="What needs to be done?" />
         <div className="mb-4">
-          <label className="mb-1 block text-xs font-mono uppercase text-slate-500 dark:text-slate-400">
-            Priority
+          <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
+            Priority Level
           </label>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {Object.entries(PRIORITIES).map(([key, cfg]) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => setPriority(key as PriorityKey)}
-                className={`rounded border px-3 py-2 text-xs font-mono transition-all ${
-                  priority === key
-                    ? `${cfg.color} border-current font-bold`
-                    : 'border-transparent bg-slate-50 text-slate-400 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-500 dark:hover:bg-slate-700'
-                }`}
+                className={`flex flex-col items-center justify-center gap-1 rounded-lg border p-2 text-xs font-medium transition-all ${priority === key
+                  ? `${cfg.color} border-transparent ring-1 ring-current`
+                  : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
+                  }`}
               >
-                {cfg.ascii} {cfg.label}
+                {cfg.icon}
+                {cfg.label}
               </button>
             ))}
           </div>
@@ -966,13 +887,13 @@ const CardForm = ({
           value={description}
           onChange={setDescription}
           type="textarea"
-          placeholder="Details..."
+          placeholder="Add details, acceptance criteria, etc."
         />
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="mt-6 flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit">Save</Button>
+          <Button type="submit">Save Task</Button>
         </div>
       </form>
     </Modal>
@@ -980,4 +901,3 @@ const CardForm = ({
 }
 
 export default App
-
