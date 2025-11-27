@@ -545,14 +545,14 @@ const App = () => {
                         }}
                         className="group/card relative cursor-grab rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20"
                       >
-                        <div className="mb-3 flex items-start justify-between gap-3">
+                        <div className="mb-3 flex items-start gap-3">
                           <span
                             className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${PRIORITIES[card.priority]?.color}`}
                           >
                             {PRIORITIES[card.priority]?.icon}
                             {PRIORITIES[card.priority]?.label}
                           </span>
-                          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/card:opacity-100">
+                          <div className="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/card:opacity-100">
                             <button
                               type="button"
                               onClick={(e) => {
