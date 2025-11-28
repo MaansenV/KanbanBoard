@@ -1,4 +1,3 @@
-```
 import {
     Activity,
     BarChart3,
@@ -17,10 +16,12 @@ type ProjectStatisticsProps = {
         columns: {
             id: string
             title: string
+            category?: 'todo' | 'doing' | 'done'
             cards: {
                 id: string
                 priority: string
                 createdAt?: number
+                completedAt?: number
             }[]
         }[]
     } | null
@@ -35,9 +36,9 @@ export const ProjectStatistics = ({ board, deletedCount, lastActivity }: Project
         const updateTime = () => {
             const seconds = Math.floor((Date.now() - lastActivity) / 1000)
             if (seconds < 60) setTimeAgo('Gerade eben')
-            else if (seconds < 3600) setTimeAgo(`Vor ${ Math.floor(seconds / 60) } Min.`)
-            else if (seconds < 86400) setTimeAgo(`Vor ${ Math.floor(seconds / 3600) } Std.`)
-            else setTimeAgo(`Vor ${ Math.floor(seconds / 86400) } Tagen`)
+            else if (seconds < 3600) setTimeAgo(`Vor ${Math.floor(seconds / 60)} Min.`)
+            else if (seconds < 86400) setTimeAgo(`Vor ${Math.floor(seconds / 3600)} Std.`)
+            else setTimeAgo(`Vor ${Math.floor(seconds / 86400)} Tagen`)
         }
 
         updateTime()
@@ -57,9 +58,12 @@ export const ProjectStatistics = ({ board, deletedCount, lastActivity }: Project
         let inProgress = 0
         let bugs = 0
 
+        let totalResolutionTime = 0
+        let resolvedCount = 0
+
         board.columns.forEach(col => {
-            const isDone = col.title.toLowerCase().includes('done') || col.title.toLowerCase().includes('erledigt')
-            const isProgress = col.title.toLowerCase().includes('progress') || col.title.toLowerCase().includes('bearbeitung')
+            const isDone = col.category === 'done' || (!col.category && (col.title.toLowerCase().includes('done') || col.title.toLowerCase().includes('erledigt')))
+            const isProgress = col.category === 'doing' || (!col.category && (col.title.toLowerCase().includes('progress') || col.title.toLowerCase().includes('bearbeitung')))
 
             created += col.cards.length
             if (isDone) done += col.cards.length
@@ -67,12 +71,23 @@ export const ProjectStatistics = ({ board, deletedCount, lastActivity }: Project
 
             col.cards.forEach(card => {
                 if (card.priority === 'critical') bugs++
+                if (card.completedAt && card.createdAt) {
+                    totalResolutionTime += (card.completedAt - card.createdAt)
+                    resolvedCount++
+                }
             })
         })
 
         // Mock/Derived calculations
         const sprintProgress = created > 0 ? Math.round((done / created) * 100) : 0
         const weeklyThroughput = Math.round(done / Math.max(1, daysActive / 7))
+
+        const avgHours = resolvedCount > 0
+            ? Math.round(totalResolutionTime / resolvedCount / (1000 * 60 * 60))
+            : 0
+        const avgResolutionTime = avgHours > 24
+            ? `${Math.round(avgHours / 24)} Tage`
+            : `${avgHours} Std.`
 
         return {
             startDate: new Date(startDate).toLocaleDateString('de-DE'),
@@ -83,7 +98,8 @@ export const ProjectStatistics = ({ board, deletedCount, lastActivity }: Project
             inProgress,
             bugs,
             sprintProgress,
-            weeklyThroughput
+            weeklyThroughput,
+            avgResolutionTime
         }
     }, [board, deletedCount])
 
@@ -155,7 +171,7 @@ export const ProjectStatistics = ({ board, deletedCount, lastActivity }: Project
                 </div>
                 <div className="flex justify-between items-center text-sm">
                     <span className="text-muted-foreground">Ø Lösungszeit:</span>
-                    <span className="font-medium font-mono">2 Tage</span>
+                    <span className="font-medium font-mono">{stats.avgResolutionTime}</span>
                 </div>
             </div>
 
@@ -178,7 +194,7 @@ export const ProjectStatistics = ({ board, deletedCount, lastActivity }: Project
                     <div className="h-2 w-full bg-background rounded-full overflow-hidden">
                         <div
                             className="h-full bg-primary transition-all duration-500 ease-out"
-                            style={{ width: `${ stats.sprintProgress }% ` }}
+                            style={{ width: `${stats.sprintProgress}%` }}
                         />
                     </div>
                 </div>
@@ -192,7 +208,6 @@ const MetricRow = ({ label, value, className = '', icon }: { label: string, valu
         <span className="text-muted-foreground flex items-center gap-1">
             {icon} {label}:
         </span>
-        <span className={`font - medium font - mono ${ className } `}>{value}</span>
+        <span className={`font-medium font-mono ${className}`}>{value}</span>
     </div>
 )
-```

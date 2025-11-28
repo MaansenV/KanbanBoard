@@ -53,12 +53,14 @@ type Card = {
   description?: string
   priority: PriorityKey
   createdAt?: number
+  completedAt?: number
 }
 
 type Column = {
   id: string
   title: string
   color: string
+  category: 'todo' | 'doing' | 'done'
   cards: Card[]
 }
 
@@ -259,18 +261,21 @@ const App = () => {
           id: generateId(),
           title: 'To Do',
           color: 'bg-slate-500',
+          category: 'todo',
           cards: [],
         },
         {
           id: generateId(),
           title: 'In Progress',
           color: 'bg-blue-500',
+          category: 'doing',
           cards: [],
         },
         {
           id: generateId(),
           title: 'Done',
           color: 'bg-emerald-500',
+          category: 'done',
           cards: [],
         },
       ],
@@ -325,11 +330,20 @@ const App = () => {
       const cardIdx = sourceCol.cards.findIndex((c) => c.id === dragState.id)
       if (cardIdx === -1) return prev
       const [movedCard] = sourceCol.cards.splice(cardIdx, 1)
+
+      // Update completedAt if moving to/from done column
+      if (targetCol.category === 'done' && sourceCol.category !== 'done') {
+        movedCard.completedAt = Date.now()
+      } else if (targetCol.category !== 'done' && sourceCol.category === 'done') {
+        movedCard.completedAt = undefined
+      }
+
       if (targetIndex !== null) {
         targetCol.cards.splice(targetIndex, 0, movedCard)
       } else {
         targetCol.cards.push(movedCard)
       }
+      setLastActivity(Date.now())
       return nextBoards
     })
   }
@@ -345,6 +359,7 @@ const App = () => {
       if (sourceIdx === -1 || targetIdx === -1) return prev
       const [movedCol] = board.columns.splice(sourceIdx, 1)
       board.columns.splice(targetIdx, 0, movedCol)
+      setLastActivity(Date.now())
       return nextBoards
     })
   }
@@ -375,6 +390,7 @@ const App = () => {
     setDeletedCount((prev) => prev + 1)
     setLastActivity(Date.now())
   }
+
 
   return (
     <div
@@ -677,7 +693,7 @@ const App = () => {
         initialData={modal.data?.col as Column | undefined}
         onClose={() => setModal({ type: null })}
         darkMode={darkMode}
-        onSubmit={({ title, color }) => {
+        onSubmit={({ title, color, category }) => {
           if (!activeBoardId || !title.trim()) return
           const currentModal = modal
           setBoards((prev) => {
@@ -685,7 +701,7 @@ const App = () => {
             const board = next.find((b) => b.id === activeBoardId)
             if (!board) return prev
             if (currentModal.type === 'createColumn') {
-              board.columns.push({ id: generateId(), title, color, cards: [] })
+              board.columns.push({ id: generateId(), title, color, category, cards: [] })
             } else if (currentModal.type === 'editColumn') {
               const modalCol = currentModal.data?.col as Column | undefined
               const target = board.columns.find(
@@ -694,6 +710,7 @@ const App = () => {
               if (target) {
                 target.title = title
                 target.color = color
+                target.category = category
               }
             }
             return next
@@ -734,6 +751,7 @@ const App = () => {
             }
             return next
           })
+          setLastActivity(Date.now())
           setModal({ type: null })
         }}
       />
@@ -778,7 +796,7 @@ const BoardForm = ({ isOpen, onClose, onSubmit, darkMode }: BoardFormProps) => {
 type ColumnFormProps = {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: { title: string; color: string }) => void
+  onSubmit: (data: { title: string; color: string; category: 'todo' | 'doing' | 'done' }) => void
   mode: 'create' | 'edit'
   initialData?: Column
   darkMode: boolean
@@ -794,11 +812,13 @@ const ColumnForm = ({
 }: ColumnFormProps) => {
   const [title, setTitle] = useState('')
   const [color, setColor] = useState('bg-slate-500')
+  const [category, setCategory] = useState<'todo' | 'doing' | 'done'>('todo')
 
   useEffect(() => {
     if (isOpen) {
       setTitle(initialData?.title ?? '')
       setColor(initialData?.color ?? 'bg-slate-500')
+      setCategory(initialData?.category ?? 'todo')
     }
   }, [isOpen, initialData])
 
@@ -819,7 +839,7 @@ const ColumnForm = ({
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    onSubmit({ title, color })
+    onSubmit({ title, color, category })
   }
 
   return (
@@ -831,6 +851,28 @@ const ColumnForm = ({
     >
       <form onSubmit={handleSubmit}>
         <InputGroup label="Column Title" value={title} onChange={setTitle} placeholder="e.g. In Review" />
+
+        <div className="mb-4">
+          <label className="mb-2 block text-sm font-medium text-muted-foreground">
+            Column Type
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {(['todo', 'doing', 'done'] as const).map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setCategory(cat)}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium capitalize transition-all ${category === cat
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-background text-muted-foreground hover:bg-accent'
+                  }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="mb-6">
           <label className="mb-2 block text-sm font-medium text-muted-foreground">
             Color Tag
