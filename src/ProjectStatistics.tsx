@@ -16,7 +16,7 @@ type ProjectStatisticsProps = {
         columns: {
             id: string
             title: string
-            category?: 'todo' | 'doing' | 'done' | 'bugs'
+            category?: 'todo' | 'doing' | 'done' | 'bugs' | 'none'
             cards: {
                 id: string
                 priority: string

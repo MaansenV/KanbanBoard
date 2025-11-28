@@ -54,13 +54,20 @@ type Card = {
   priority: PriorityKey
   createdAt?: number
   completedAt?: number
+  subtasks?: Subtask[]
+}
+
+type Subtask = {
+  id: string
+  title: string
+  completed: boolean
 }
 
 type Column = {
   id: string
   title: string
   color: string
-  category: 'todo' | 'doing' | 'done' | 'bugs'
+  category: 'todo' | 'doing' | 'done' | 'bugs' | 'none'
   cards: Card[]
 }
 
@@ -102,7 +109,7 @@ const deepClone = <T,>(value: T): T =>
 
 type ButtonProps = {
   children: ReactNode
-  onClick?: () => void
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'icon'
   className?: string
   disabled?: boolean
@@ -392,6 +399,24 @@ const App = () => {
     setLastActivity(Date.now())
   }
 
+  const handleSubtaskToggle = (colId: string, cardId: string, subtaskId: string) => {
+    setBoards((prev) => {
+      const next = deepClone(prev)
+      const board = next.find((b) => b.id === activeBoardId)
+      if (!board) return prev
+      const col = board.columns.find((c) => c.id === colId)
+      if (!col) return prev
+      const card = col.cards.find((c) => c.id === cardId)
+      if (!card) return prev
+      const subtask = card?.subtasks?.find((s) => s.id === subtaskId)
+      if (subtask) {
+        subtask.completed = !subtask.completed
+      }
+      return next
+    })
+    setLastActivity(Date.now())
+  }
+
 
   return (
     <div
@@ -628,9 +653,38 @@ const App = () => {
                                 {card.description}
                               </p>
                             )}
+                            {card.subtasks && card.subtasks.length > 0 && (
+                              <div className="mt-3 space-y-1">
+                                {card.subtasks.map((subtask) => (
+                                  <div
+                                    key={subtask.id}
+                                    className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleSubtaskToggle(col.id, card.id, subtask.id)
+                                    }}
+                                  >
+                                    <div className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors ${subtask.completed ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground'}`}>
+                                      {subtask.completed && <CheckCircle2 size={10} />}
+                                    </div>
+                                    <span className={subtask.completed ? 'line-through opacity-50' : ''}>
+                                      {subtask.title}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                             <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
                               <div className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
                                 <span>ID: {card.id.slice(0, 4)}</span>
+                                {card.subtasks && card.subtasks.length > 0 && (
+                                  <div className="flex items-center gap-1" title="Sub-tasks">
+                                    <CheckCircle2 size={12} />
+                                    <span>
+                                      {card.subtasks.filter(t => t.completed).length}/{card.subtasks.length}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -750,7 +804,7 @@ const App = () => {
         initialData={modal.data?.card as Card | undefined}
         onClose={() => setModal({ type: null })}
         darkMode={darkMode}
-        onSubmit={({ title, description, priority }) => {
+        onSubmit={({ title, description, priority, subtasks }) => {
           if (!activeBoardId || !title.trim()) return
           const currentModal = modal
           const colId = currentModal.data?.colId as string | undefined
@@ -762,7 +816,7 @@ const App = () => {
             const col = board.columns.find((c) => c.id === colId)
             if (!col) return prev
             if (currentModal.type === 'createCard') {
-              col.cards.push({ id: generateId(), title, description, priority, createdAt: Date.now() })
+              col.cards.push({ id: generateId(), title, description, priority, subtasks, createdAt: Date.now() })
             } else if (currentModal.type === 'editCard') {
               const modalCard = currentModal.data?.card as Card | undefined
               const target = col.cards.find(
@@ -772,6 +826,7 @@ const App = () => {
                 target.title = title
                 target.description = description
                 target.priority = priority
+                target.subtasks = subtasks
               }
             }
             return next
@@ -825,7 +880,7 @@ const BoardForm = ({ isOpen, onClose, onSubmit, mode, initialData, darkMode }: B
 type ColumnFormProps = {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: { title: string; color: string; category: 'todo' | 'doing' | 'done' | 'bugs' }) => void
+  onSubmit: (data: { title: string; color: string; category: 'todo' | 'doing' | 'done' | 'bugs' | 'none' }) => void
   mode: 'create' | 'edit'
   initialData?: Column
   darkMode: boolean
@@ -841,7 +896,7 @@ const ColumnForm = ({
 }: ColumnFormProps) => {
   const [title, setTitle] = useState('')
   const [color, setColor] = useState('bg-slate-500')
-  const [category, setCategory] = useState<'todo' | 'doing' | 'done' | 'bugs'>('doing')
+  const [category, setCategory] = useState<'todo' | 'doing' | 'done' | 'bugs' | 'none'>('doing')
 
   useEffect(() => {
     if (isOpen) {
@@ -886,14 +941,14 @@ const ColumnForm = ({
             Column Type
           </label>
           <div className="grid grid-cols-3 gap-2">
-            {(['doing', 'done', 'bugs'] as const).map((cat) => (
+            {(['doing', 'done', 'bugs', 'none'] as const).map((cat) => (
               <button
                 key={cat}
                 type="button"
                 onClick={() => setCategory(cat)}
                 className={`rounded-lg border px-3 py-2 text-sm font-medium capitalize transition-all ${category === cat
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border bg-background text-muted-foreground hover:bg-accent'
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-background text-muted-foreground hover:bg-accent'
                   }`}
               >
                 {cat}
@@ -932,7 +987,7 @@ const ColumnForm = ({
 type CardFormProps = {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: { title: string; description: string; priority: PriorityKey }) => void
+  onSubmit: (data: { title: string; description: string; priority: PriorityKey; subtasks: Subtask[] }) => void
   mode: 'create' | 'edit'
   initialData?: Card
   darkMode: boolean
@@ -949,18 +1004,37 @@ const CardForm = ({
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<PriorityKey>('medium')
+  const [subtasks, setSubtasks] = useState<Subtask[]>([])
+  const [newSubtask, setNewSubtask] = useState('')
 
   useEffect(() => {
     if (isOpen) {
       setTitle(initialData?.title ?? '')
       setDescription(initialData?.description ?? '')
       setPriority(initialData?.priority ?? 'medium')
+      setSubtasks(initialData?.subtasks ?? [])
     }
   }, [isOpen, initialData])
 
+  const handleAddSubtask = (e: React.KeyboardEvent<HTMLInputElement> | React.MouseEvent) => {
+    if (e.type === 'keydown' && (e as React.KeyboardEvent).key !== 'Enter') return
+    e.preventDefault()
+    if (!newSubtask.trim()) return
+    setSubtasks(prev => [...prev, { id: generateId(), title: newSubtask.trim(), completed: false }])
+    setNewSubtask('')
+  }
+
+  const toggleSubtask = (id: string) => {
+    setSubtasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t))
+  }
+
+  const deleteSubtask = (id: string) => {
+    setSubtasks(prev => prev.filter(t => t.id !== id))
+  }
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    onSubmit({ title, description, priority })
+    onSubmit({ title, description, priority, subtasks })
   }
 
   return (
@@ -1000,6 +1074,51 @@ const CardForm = ({
           type="textarea"
           placeholder="Add details, acceptance criteria, etc."
         />
+
+        <div className="mb-4">
+          <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
+            Sub-tasks
+          </label>
+          <div className="space-y-2">
+            {subtasks.map(task => (
+              <div key={task.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800">
+                <button
+                  type="button"
+                  onClick={() => toggleSubtask(task.id)}
+                  className={`flex h-5 w-5 items-center justify-center rounded border transition-colors ${task.completed
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-slate-300 bg-white hover:border-primary dark:border-slate-600 dark:bg-slate-700'
+                    }`}
+                >
+                  {task.completed && <CheckCircle2 size={12} />}
+                </button>
+                <span className={`flex-1 text-sm ${task.completed ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>
+                  {task.title}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => deleteSubtask(task.id)}
+                  className="text-slate-400 hover:text-rose-500"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newSubtask}
+                onChange={(e) => setNewSubtask(e.target.value)}
+                onKeyDown={handleAddSubtask}
+                placeholder="Add a sub-task..."
+                className="flex-1 rounded-lg border border-slate-200 bg-white p-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              />
+              <Button type="button" onClick={handleAddSubtask} variant="secondary" className="px-3">
+                <Plus size={16} />
+              </Button>
+            </div>
+          </div>
+        </div>
         <div className="mt-6 flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose}>
             Cancel
