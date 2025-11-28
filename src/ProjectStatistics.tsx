@@ -16,7 +16,7 @@ type ProjectStatisticsProps = {
         columns: {
             id: string
             title: string
-            category?: 'todo' | 'doing' | 'done'
+            category?: 'todo' | 'doing' | 'done' | 'bugs'
             cards: {
                 id: string
                 priority: string
@@ -64,13 +64,14 @@ export const ProjectStatistics = ({ board, deletedCount, lastActivity }: Project
         board.columns.forEach(col => {
             const isDone = col.category === 'done' || (!col.category && (col.title.toLowerCase().includes('done') || col.title.toLowerCase().includes('erledigt')))
             const isProgress = col.category === 'doing' || (!col.category && (col.title.toLowerCase().includes('progress') || col.title.toLowerCase().includes('bearbeitung')))
+            const isBugs = col.category === 'bugs'
 
             created += col.cards.length
             if (isDone) done += col.cards.length
             if (isProgress) inProgress += col.cards.length
 
             col.cards.forEach(card => {
-                if (card.priority === 'critical') bugs++
+                if (isBugs || card.priority === 'critical') bugs++
                 if (card.completedAt && card.createdAt) {
                     totalResolutionTime += (card.completedAt - card.createdAt)
                     resolvedCount++

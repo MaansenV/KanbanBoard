@@ -60,7 +60,7 @@ type Column = {
   id: string
   title: string
   color: string
-  category: 'todo' | 'doing' | 'done'
+  category: 'todo' | 'doing' | 'done' | 'bugs'
   cards: Card[]
 }
 
@@ -73,6 +73,7 @@ type Board = {
 
 type ModalType =
   | 'createBoard'
+  | 'editBoard'
   | 'createColumn'
   | 'editColumn'
   | 'createCard'
@@ -475,17 +476,30 @@ const App = () => {
                 >
                   {board.title}
                   {activeBoardId === board.id && (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleBoardDeletion(board.id)
-                      }}
-                      className="ml-1 rounded-full p-0.5 text-primary-foreground/70 opacity-0 transition-all hover:bg-white/20 hover:text-white group-hover:opacity-100"
-                    >
-                      <X size={14} />
-                    </span>
+                    <div className="ml-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setModal({ type: 'editBoard', data: { board } })
+                        }}
+                        className="rounded-full p-0.5 text-primary-foreground/70 transition-all hover:bg-white/20 hover:text-white"
+                      >
+                        <Edit2 size={12} />
+                      </span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleBoardDeletion(board.id)
+                        }}
+                        className="rounded-full p-0.5 text-primary-foreground/70 transition-all hover:bg-white/20 hover:text-white"
+                      >
+                        <X size={14} />
+                      </span>
+                    </div>
                   )}
                 </button>
               ))}
@@ -675,14 +689,25 @@ const App = () => {
       </div>
 
       <BoardForm
-        isOpen={modal.type === 'createBoard'}
+        isOpen={modal.type === 'createBoard' || modal.type === 'editBoard'}
+        mode={modal.type === 'createBoard' ? 'create' : 'edit'}
+        initialData={modal.data?.board as Board | undefined}
         onClose={() => setModal({ type: null })}
         darkMode={darkMode}
         onSubmit={({ title }) => {
           if (!title.trim()) return
-          const newBoard: Board = { id: generateId(), title, createdAt: Date.now(), columns: [] }
-          setBoards((prev) => [...prev, newBoard])
-          setActiveBoardId(newBoard.id)
+          const currentModal = modal
+          setBoards((prev) => {
+            if (currentModal.type === 'createBoard') {
+              const newBoard: Board = { id: generateId(), title, createdAt: Date.now(), columns: [] }
+              setActiveBoardId(newBoard.id)
+              return [...prev, newBoard]
+            } else if (currentModal.type === 'editBoard') {
+              const modalBoard = currentModal.data?.board as Board | undefined
+              return prev.map(b => b.id === modalBoard?.id ? { ...b, title } : b)
+            }
+            return prev
+          })
           setModal({ type: null })
         }}
       />
@@ -763,15 +788,19 @@ type BoardFormProps = {
   isOpen: boolean
   onClose: () => void
   onSubmit: (data: { title: string }) => void
+  mode: 'create' | 'edit'
+  initialData?: Board
   darkMode: boolean
 }
 
-const BoardForm = ({ isOpen, onClose, onSubmit, darkMode }: BoardFormProps) => {
+const BoardForm = ({ isOpen, onClose, onSubmit, mode, initialData, darkMode }: BoardFormProps) => {
   const [title, setTitle] = useState('')
 
   useEffect(() => {
-    if (!isOpen) setTitle('')
-  }, [isOpen])
+    if (isOpen) {
+      setTitle(initialData?.title ?? '')
+    }
+  }, [isOpen, initialData])
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -779,14 +808,14 @@ const BoardForm = ({ isOpen, onClose, onSubmit, darkMode }: BoardFormProps) => {
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="New Project" darkMode={darkMode}>
+    <Modal isOpen={isOpen} onClose={onClose} title={mode === 'edit' ? 'Edit Project' : 'New Project'} darkMode={darkMode}>
       <form onSubmit={handleSubmit}>
         <InputGroup label="Project Name" value={title} onChange={setTitle} placeholder="e.g. Website Redesign" />
         <div className="mt-6 flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit">Create Project</Button>
+          <Button type="submit">{mode === 'edit' ? 'Save Changes' : 'Create Project'}</Button>
         </div>
       </form>
     </Modal>
@@ -796,7 +825,7 @@ const BoardForm = ({ isOpen, onClose, onSubmit, darkMode }: BoardFormProps) => {
 type ColumnFormProps = {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: { title: string; color: string; category: 'todo' | 'doing' | 'done' }) => void
+  onSubmit: (data: { title: string; color: string; category: 'todo' | 'doing' | 'done' | 'bugs' }) => void
   mode: 'create' | 'edit'
   initialData?: Column
   darkMode: boolean
@@ -812,13 +841,13 @@ const ColumnForm = ({
 }: ColumnFormProps) => {
   const [title, setTitle] = useState('')
   const [color, setColor] = useState('bg-slate-500')
-  const [category, setCategory] = useState<'todo' | 'doing' | 'done'>('todo')
+  const [category, setCategory] = useState<'todo' | 'doing' | 'done' | 'bugs'>('doing')
 
   useEffect(() => {
     if (isOpen) {
       setTitle(initialData?.title ?? '')
       setColor(initialData?.color ?? 'bg-slate-500')
-      setCategory(initialData?.category ?? 'todo')
+      setCategory(initialData?.category ?? 'doing')
     }
   }, [isOpen, initialData])
 
@@ -857,7 +886,7 @@ const ColumnForm = ({
             Column Type
           </label>
           <div className="grid grid-cols-3 gap-2">
-            {(['todo', 'doing', 'done'] as const).map((cat) => (
+            {(['doing', 'done', 'bugs'] as const).map((cat) => (
               <button
                 key={cat}
                 type="button"
@@ -872,6 +901,7 @@ const ColumnForm = ({
             ))}
           </div>
         </div>
+
 
         <div className="mb-6">
           <label className="mb-2 block text-sm font-medium text-muted-foreground">
