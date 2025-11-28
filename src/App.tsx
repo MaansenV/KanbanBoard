@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import type { FormEvent, ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
+import { ProjectStatistics } from './ProjectStatistics'
 
 const PRIORITIES = {
   low: {
@@ -51,6 +52,7 @@ type Card = {
   title: string
   description?: string
   priority: PriorityKey
+  createdAt?: number
 }
 
 type Column = {
@@ -63,6 +65,7 @@ type Column = {
 type Board = {
   id: string
   title: string
+  createdAt?: number
   columns: Column[]
 }
 
@@ -222,6 +225,8 @@ const App = () => {
     sourceId: null,
   })
   const [darkMode, setDarkMode] = useState(false)
+  const [deletedCount, setDeletedCount] = useState(0)
+  const [lastActivity, setLastActivity] = useState<number>(Date.now())
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -248,6 +253,7 @@ const App = () => {
     const demoBoard: Board = {
       id: demoId,
       title: 'Product Launch',
+      createdAt: Date.now(),
       columns: [
         {
           id: generateId(),
@@ -363,8 +369,11 @@ const App = () => {
       const col = board.columns.find((c) => c.id === colId)
       if (!col) return prev
       col.cards = col.cards.filter((c) => c.id !== cardId)
+      col.cards = col.cards.filter((c) => c.id !== cardId)
       return next
     })
+    setDeletedCount((prev) => prev + 1)
+    setLastActivity(Date.now())
   }
 
   return (
@@ -435,213 +444,218 @@ const App = () => {
           </div>
         </header>
 
-        <div className="mb-6 flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-          {boards.map((board) => (
-            <button
-              key={board.id}
-              onClick={() => setActiveBoardId(board.id)}
-              className={`group relative flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${activeBoardId === board.id
-                ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
-                : 'bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground'
-                }`}
-            >
-              {board.title}
-              {activeBoardId === board.id && (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleBoardDeletion(board.id)
-                  }}
-                  className="ml-1 rounded-full p-0.5 text-primary-foreground/70 opacity-0 transition-all hover:bg-white/20 hover:text-white group-hover:opacity-100"
+        <div className="flex flex-1 gap-6 overflow-hidden">
+          <ProjectStatistics board={activeBoard} deletedCount={deletedCount} lastActivity={lastActivity} />
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="mb-6 flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+              {boards.map((board) => (
+                <button
+                  key={board.id}
+                  onClick={() => setActiveBoardId(board.id)}
+                  className={`group relative flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${activeBoardId === board.id
+                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
+                    : 'bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground'
+                    }`}
                 >
-                  <X size={14} />
-                </span>
-              )}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setModal({ type: 'createBoard' })}
-            className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-background/30 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary hover:bg-background/50 hover:text-primary"
-          >
-            <Plus size={16} /> New Board
-          </button>
-        </div>
+                  {board.title}
+                  {activeBoardId === board.id && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleBoardDeletion(board.id)
+                      }}
+                      className="ml-1 rounded-full p-0.5 text-primary-foreground/70 opacity-0 transition-all hover:bg-white/20 hover:text-white group-hover:opacity-100"
+                    >
+                      <X size={14} />
+                    </span>
+                  )}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setModal({ type: 'createBoard' })}
+                className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-background/30 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary hover:bg-background/50 hover:text-primary"
+              >
+                <Plus size={16} /> New Board
+              </button>
+            </div>
 
-        {activeBoard ? (
-          <div className="flex-1 overflow-x-auto overflow-y-hidden rounded-3xl glass-panel p-6">
-            <div className="flex h-full min-w-max gap-6">
-              {activeBoard.columns.map((col) => (
-                <div
-                  key={col.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, 'column', col.id)}
-                  onDragEnd={handleDragEnd}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.stopPropagation()
-                    handleDropColumn(col.id)
-                  }}
-                  className="group flex h-full w-80 flex-col rounded-2xl bg-secondary/30 ring-1 ring-border"
-                >
-                  <div className="flex cursor-grab items-center justify-between p-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`h-3 w-3 rounded-full ${col.color}`} />
-                      <span className="font-bold text-foreground">
-                        {col.title}
-                      </span>
-                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-background/50 px-1.5 text-xs font-medium text-muted-foreground">
-                        {col.cards.length}
-                      </span>
-                    </div>
-                    <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setModal({ type: 'editColumn', data: { boardId: activeBoardId, col } })
-                        }
-                        className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
-                      >
-                        <MoreHorizontal size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!window.confirm('Delete?')) return
-                          setBoards((prev) => {
-                            const next = deepClone(prev)
-                            const board = next.find((b) => b.id === activeBoardId)
-                            if (!board) return prev
-                            board.columns = board.columns.filter((c) => c.id !== col.id)
-                            return next
-                          })
-                        }}
-                        className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div
-                    className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-3"
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => handleDropCard(col.id)}
-                  >
-                    {col.cards.map((card, idx) => (
-                      <div
-                        key={card.id}
-                        draggable
-                        onDragStart={(e) => {
-                          e.stopPropagation()
-                          handleDragStart(e, 'card', card.id, col.id)
-                        }}
-                        onDragEnd={handleDragEnd}
-                        onDrop={(e) => {
-                          e.stopPropagation()
-                          handleDropCard(col.id, idx)
-                        }}
-                        className="group/card relative cursor-grab rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20"
-                      >
-                        <div className="mb-3 flex items-start gap-3">
-                          <span
-                            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${PRIORITIES[card.priority]?.color}`}
-                          >
-                            {PRIORITIES[card.priority]?.icon}
-                            {PRIORITIES[card.priority]?.label}
+            {activeBoard ? (
+              <div className="flex-1 overflow-x-auto overflow-y-hidden rounded-3xl glass-panel p-6">
+                <div className="flex h-full min-w-max gap-6">
+                  {activeBoard.columns.map((col) => (
+                    <div
+                      key={col.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, 'column', col.id)}
+                      onDragEnd={handleDragEnd}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.stopPropagation()
+                        handleDropColumn(col.id)
+                      }}
+                      className="group flex h-full w-80 flex-col rounded-2xl bg-secondary/30 ring-1 ring-border"
+                    >
+                      <div className="flex cursor-grab items-center justify-between p-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-3 w-3 rounded-full ${col.color}`} />
+                          <span className="font-bold text-foreground">
+                            {col.title}
                           </span>
-                          <div className="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/card:opacity-100">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setModal({
-                                  type: 'editCard',
-                                  data: { boardId: activeBoardId, colId: col.id, card },
-                                })
-                              }}
-                              className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                            >
-                              <Edit2 size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleCardDeletion(col.id, card.id)
-                              }}
-                              className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
+                          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-background/50 px-1.5 text-xs font-medium text-muted-foreground">
+                            {col.cards.length}
+                          </span>
                         </div>
-                        <h4 className="mb-2 font-semibold text-card-foreground">
-                          {card.title}
-                        </h4>
-                        {card.description && (
-                          <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
-                            {card.description}
-                          </p>
-                        )}
-                        <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
-                          <div className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
-                            <span>ID: {card.id.slice(0, 4)}</span>
-                          </div>
+                        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setModal({ type: 'editColumn', data: { boardId: activeBoardId, col } })
+                            }
+                            className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
+                          >
+                            <MoreHorizontal size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!window.confirm('Delete?')) return
+                              setBoards((prev) => {
+                                const next = deepClone(prev)
+                                const board = next.find((b) => b.id === activeBoardId)
+                                if (!board) return prev
+                                board.columns = board.columns.filter((c) => c.id !== col.id)
+                                return next
+                              })
+                            }}
+                            className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
                       </div>
-                    ))}
-                    {col.cards.length === 0 && (
-                      <div className="flex h-32 flex-col items-center justify-center rounded-xl border-2 border-dashed border-border text-sm font-medium text-muted-foreground">
-                        <div className="mb-2 rounded-full bg-secondary p-3">
-                          <Calendar size={20} />
-                        </div>
-                        <span>No tasks yet</span>
-                      </div>
-                    )}
-                  </div>
 
-                  <div className="p-3 pt-0">
+                      <div
+                        className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-3"
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => handleDropCard(col.id)}
+                      >
+                        {col.cards.map((card, idx) => (
+                          <div
+                            key={card.id}
+                            draggable
+                            onDragStart={(e) => {
+                              e.stopPropagation()
+                              handleDragStart(e, 'card', card.id, col.id)
+                            }}
+                            onDragEnd={handleDragEnd}
+                            onDrop={(e) => {
+                              e.stopPropagation()
+                              handleDropCard(col.id, idx)
+                            }}
+                            className="group/card relative cursor-grab rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20"
+                          >
+                            <div className="mb-3 flex items-start gap-3">
+                              <span
+                                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${PRIORITIES[card.priority]?.color}`}
+                              >
+                                {PRIORITIES[card.priority]?.icon}
+                                {PRIORITIES[card.priority]?.label}
+                              </span>
+                              <div className="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/card:opacity-100">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setModal({
+                                      type: 'editCard',
+                                      data: { boardId: activeBoardId, colId: col.id, card },
+                                    })
+                                  }}
+                                  className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                                >
+                                  <Edit2 size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleCardDeletion(col.id, card.id)
+                                  }}
+                                  className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+                            <h4 className="mb-2 font-semibold text-card-foreground">
+                              {card.title}
+                            </h4>
+                            {card.description && (
+                              <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
+                                {card.description}
+                              </p>
+                            )}
+                            <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+                              <div className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
+                                <span>ID: {card.id.slice(0, 4)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {col.cards.length === 0 && (
+                          <div className="flex h-32 flex-col items-center justify-center rounded-xl border-2 border-dashed border-border text-sm font-medium text-muted-foreground">
+                            <div className="mb-2 rounded-full bg-secondary p-3">
+                              <Calendar size={20} />
+                            </div>
+                            <span>No tasks yet</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="p-3 pt-0">
+                        <button
+                          type="button"
+                          onClick={() => setModal({ type: 'createCard', data: { colId: col.id } })}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
+                        >
+                          <Plus size={16} /> Add Task
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="pt-4">
                     <button
                       type="button"
-                      onClick={() => setModal({ type: 'createCard', data: { colId: col.id } })}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
+                      onClick={() => setModal({ type: 'createColumn' })}
+                      className="flex h-12 w-12 items-center justify-center rounded-xl border-2 border-dashed border-border bg-secondary/30 text-muted-foreground transition-all hover:border-primary hover:bg-background hover:text-primary hover:shadow-lg"
                     >
-                      <Plus size={16} /> Add Task
+                      <Plus size={24} />
                     </button>
                   </div>
                 </div>
-              ))}
-
-              <div className="pt-4">
-                <button
-                  type="button"
-                  onClick={() => setModal({ type: 'createColumn' })}
-                  className="flex h-12 w-12 items-center justify-center rounded-xl border-2 border-dashed border-border bg-secondary/30 text-muted-foreground transition-all hover:border-primary hover:bg-background hover:text-primary hover:shadow-lg"
-                >
-                  <Plus size={24} />
-                </button>
               </div>
-            </div>
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center rounded-3xl glass-panel text-muted-foreground">
+                <div className="mb-6 rounded-full bg-secondary p-8">
+                  <Layout size={48} className="text-primary/50" />
+                </div>
+                <h2 className="mb-2 text-xl font-bold text-foreground">
+                  No Board Selected
+                </h2>
+                <p className="mb-6 max-w-xs text-center text-sm">
+                  Create a new board to get started with your projects.
+                </p>
+                <Button onClick={() => setModal({ type: 'createBoard' })}>
+                  <Plus size={16} /> Create New Board
+                </Button>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center rounded-3xl glass-panel text-muted-foreground">
-            <div className="mb-6 rounded-full bg-secondary p-8">
-              <Layout size={48} className="text-primary/50" />
-            </div>
-            <h2 className="mb-2 text-xl font-bold text-foreground">
-              No Board Selected
-            </h2>
-            <p className="mb-6 max-w-xs text-center text-sm">
-              Create a new board to get started with your projects.
-            </p>
-            <Button onClick={() => setModal({ type: 'createBoard' })}>
-              <Plus size={16} /> Create New Board
-            </Button>
-          </div>
-        )}
+        </div>
       </div>
 
       <BoardForm
@@ -650,7 +664,7 @@ const App = () => {
         darkMode={darkMode}
         onSubmit={({ title }) => {
           if (!title.trim()) return
-          const newBoard: Board = { id: generateId(), title, columns: [] }
+          const newBoard: Board = { id: generateId(), title, createdAt: Date.now(), columns: [] }
           setBoards((prev) => [...prev, newBoard])
           setActiveBoardId(newBoard.id)
           setModal({ type: null })
@@ -706,7 +720,7 @@ const App = () => {
             const col = board.columns.find((c) => c.id === colId)
             if (!col) return prev
             if (currentModal.type === 'createCard') {
-              col.cards.push({ id: generateId(), title, description, priority })
+              col.cards.push({ id: generateId(), title, description, priority, createdAt: Date.now() })
             } else if (currentModal.type === 'editCard') {
               const modalCard = currentModal.data?.card as Card | undefined
               const target = col.cards.find(
