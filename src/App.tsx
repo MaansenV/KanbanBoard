@@ -12,10 +12,11 @@ import {
   Calendar,
   CheckCircle2,
   AlertCircle,
-  Clock
+  Clock,
+  Copy
 } from 'lucide-react'
 import type { FormEvent, ReactNode } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ProjectStatistics } from './ProjectStatistics'
 
 const PRIORITIES = {
@@ -100,12 +101,200 @@ type DragState = {
   sourceId: string | null
 }
 
+type StorageMode = 'loading' | 'api' | 'local'
+
+type ApiState = {
+  boards: Board[]
+  revision: number
+  updatedAt: number
+}
+
+type McpStatus = {
+  connected: boolean
+  pid: number | null
+  updatedAt: number | null
+  ageMs: number | null
+}
+
 const generateId = () => Math.random().toString(36).slice(2, 11)
 
 const deepClone = <T,>(value: T): T =>
   typeof structuredClone === 'function'
     ? structuredClone(value)
     : JSON.parse(JSON.stringify(value)) as T
+
+const API_BASE_URL = import.meta.env.VITE_KANBAN_API_URL ?? 'http://127.0.0.1:4174'
+
+const createDemoBoard = (): Board => ({
+  id: generateId(),
+  title: 'Product Launch',
+  createdAt: Date.now(),
+  columns: [
+    {
+      id: generateId(),
+      title: 'To Do',
+      color: 'bg-slate-500',
+      category: 'todo',
+      cards: [],
+    },
+    {
+      id: generateId(),
+      title: 'In Progress',
+      color: 'bg-blue-500',
+      category: 'doing',
+      cards: [],
+    },
+    {
+      id: generateId(),
+      title: 'Done',
+      color: 'bg-emerald-500',
+      category: 'done',
+      cards: [],
+    },
+  ],
+})
+
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 800) => {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...options, signal: controller.signal })
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
+const stableStringify = (value: unknown) => JSON.stringify(value)
+
+const mergeValue = <T,>(baseValue: T | undefined, localValue: T | undefined, remoteValue: T | undefined): T | undefined => {
+  const baseSerialized = stableStringify(baseValue)
+  const localSerialized = stableStringify(localValue)
+  const remoteSerialized = stableStringify(remoteValue)
+
+  if (localSerialized === remoteSerialized) return localValue
+  if (localSerialized === baseSerialized) return remoteValue
+  if (remoteSerialized === baseSerialized) return localValue
+  return localValue
+}
+
+const mergeById = <T extends { id: string }>(
+  baseItems: T[] = [],
+  localItems: T[] = [],
+  remoteItems: T[] = [],
+  mergeItem: (baseItem: T | undefined, localItem: T | undefined, remoteItem: T | undefined) => T | undefined,
+) => {
+  const baseMap = new Map(baseItems.map((item) => [item.id, item]))
+  const localMap = new Map(localItems.map((item) => [item.id, item]))
+  const remoteMap = new Map(remoteItems.map((item) => [item.id, item]))
+  const ids = [
+    ...localItems.map((item) => item.id),
+    ...remoteItems.map((item) => item.id),
+    ...baseItems.map((item) => item.id),
+  ]
+  const seen = new Set<string>()
+  const merged: T[] = []
+
+  for (const id of ids) {
+    if (seen.has(id)) continue
+    seen.add(id)
+
+    const baseItem = baseMap.get(id)
+    const localItem = localMap.get(id)
+    const remoteItem = remoteMap.get(id)
+
+    if (!localItem && !baseItem && remoteItem) {
+      merged.push(remoteItem)
+      continue
+    }
+    if (!remoteItem && !baseItem && localItem) {
+      merged.push(localItem)
+      continue
+    }
+    if (!localItem || !remoteItem) continue
+
+    const nextItem = mergeItem(baseItem, localItem, remoteItem)
+    if (nextItem) merged.push(nextItem)
+  }
+
+  return merged
+}
+
+const mergeSubtask = (
+  baseSubtask: Subtask | undefined,
+  localSubtask: Subtask | undefined,
+  remoteSubtask: Subtask | undefined,
+) => {
+  if (!localSubtask) return remoteSubtask
+  if (!remoteSubtask) return localSubtask
+
+  return {
+    id: localSubtask.id,
+    title: mergeValue(baseSubtask?.title, localSubtask.title, remoteSubtask.title) ?? localSubtask.title,
+    completed: mergeValue(baseSubtask?.completed, localSubtask.completed, remoteSubtask.completed) ?? localSubtask.completed,
+  }
+}
+
+const mergeCard = (
+  baseCard: Card | undefined,
+  localCard: Card | undefined,
+  remoteCard: Card | undefined,
+) => {
+  if (!localCard) return remoteCard
+  if (!remoteCard) return localCard
+
+  const merged: Card = {
+    id: localCard.id,
+    title: mergeValue(baseCard?.title, localCard.title, remoteCard.title) ?? localCard.title,
+    description: mergeValue(baseCard?.description, localCard.description, remoteCard.description),
+    priority: mergeValue(baseCard?.priority, localCard.priority, remoteCard.priority) ?? localCard.priority,
+    createdAt: mergeValue(baseCard?.createdAt, localCard.createdAt, remoteCard.createdAt),
+    completedAt: mergeValue(baseCard?.completedAt, localCard.completedAt, remoteCard.completedAt),
+    subtasks: mergeById(baseCard?.subtasks, localCard.subtasks, remoteCard.subtasks, mergeSubtask),
+  }
+
+  if (!merged.description) delete merged.description
+  if (!merged.createdAt) delete merged.createdAt
+  if (!merged.completedAt) delete merged.completedAt
+  if (merged.subtasks?.length === 0) delete merged.subtasks
+
+  return merged
+}
+
+const mergeColumn = (
+  baseColumn: Column | undefined,
+  localColumn: Column | undefined,
+  remoteColumn: Column | undefined,
+) => {
+  if (!localColumn) return remoteColumn
+  if (!remoteColumn) return localColumn
+
+  return {
+    id: localColumn.id,
+    title: mergeValue(baseColumn?.title, localColumn.title, remoteColumn.title) ?? localColumn.title,
+    color: mergeValue(baseColumn?.color, localColumn.color, remoteColumn.color) ?? localColumn.color,
+    category: mergeValue(baseColumn?.category, localColumn.category, remoteColumn.category) ?? localColumn.category,
+    cards: mergeById(baseColumn?.cards, localColumn.cards, remoteColumn.cards, mergeCard),
+  }
+}
+
+const mergeBoard = (
+  baseBoard: Board | undefined,
+  localBoard: Board | undefined,
+  remoteBoard: Board | undefined,
+) => {
+  if (!localBoard) return remoteBoard
+  if (!remoteBoard) return localBoard
+
+  return {
+    id: localBoard.id,
+    title: mergeValue(baseBoard?.title, localBoard.title, remoteBoard.title) ?? localBoard.title,
+    createdAt: mergeValue(baseBoard?.createdAt, localBoard.createdAt, remoteBoard.createdAt),
+    columns: mergeById(baseBoard?.columns, localBoard.columns, remoteBoard.columns, mergeColumn),
+  }
+}
+
+const mergeBoards = (baseBoards: Board[], localBoards: Board[], remoteBoards: Board[]) =>
+  mergeById(baseBoards, localBoards, remoteBoards, mergeBoard)
 
 type ButtonProps = {
   children: ReactNode
@@ -237,6 +426,15 @@ const App = () => {
   const [darkMode, setDarkMode] = useState(false)
   const [deletedCount, setDeletedCount] = useState(0)
   const [lastActivity, setLastActivity] = useState<number>(Date.now())
+  const [storageMode, setStorageMode] = useState<StorageMode>('loading')
+  const [syncError, setSyncError] = useState<string | null>(null)
+  const [mcpStatus, setMcpStatus] = useState<McpStatus | null>(null)
+  const hasLoadedRef = useRef(false)
+  const remoteBoardsRef = useRef<Board[]>([])
+  const remoteRevisionRef = useRef<number | null>(null)
+  const remoteUpdatedAtRef = useRef<number | null>(null)
+  const savingRef = useRef(false)
+  const lastSerializedRef = useRef('')
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -247,56 +445,192 @@ const App = () => {
       setDarkMode(true)
     }
 
-    const saved = window.localStorage.getItem('kanban-boards')
-    if (saved) {
+    const loadBoards = async () => {
       try {
-        const parsed = JSON.parse(saved) as Board[]
-        setBoards(parsed)
-        if (parsed.length > 0) setActiveBoardId(parsed[0].id)
+        const response = await fetchWithTimeout(`${API_BASE_URL}/api/state`)
+        if (!response.ok) throw new Error(`Offline API returned ${response.status}`)
+
+        const state = await response.json() as ApiState
+        const nextBoards = state.boards.length > 0 ? state.boards : [createDemoBoard()]
+        remoteBoardsRef.current = deepClone(nextBoards)
+        remoteRevisionRef.current = state.revision
+        remoteUpdatedAtRef.current = state.updatedAt
+        lastSerializedRef.current = JSON.stringify(nextBoards)
+        hasLoadedRef.current = true
+        setBoards(nextBoards)
+        setActiveBoardId((current) => {
+          if (current && nextBoards.some((board) => board.id === current)) return current
+          return nextBoards[0]?.id ?? null
+        })
+        setStorageMode('api')
+        setSyncError(null)
         return
       } catch (error) {
-        console.error(error)
+        console.info('Offline Kanban API not available, using browser storage.', error)
       }
+
+      const saved = window.localStorage.getItem('kanban-boards')
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as Board[]
+          lastSerializedRef.current = JSON.stringify(parsed)
+          hasLoadedRef.current = true
+          setBoards(parsed)
+          setActiveBoardId(parsed.at(0)?.id ?? null)
+          setStorageMode('local')
+          return
+        } catch (error) {
+          console.error(error)
+        }
+      }
+
+      const demoBoard = createDemoBoard()
+      lastSerializedRef.current = JSON.stringify([demoBoard])
+      window.localStorage.setItem('kanban-boards', lastSerializedRef.current)
+      hasLoadedRef.current = true
+      setBoards([demoBoard])
+      setActiveBoardId(demoBoard.id)
+      setStorageMode('local')
     }
 
-    const demoId = generateId()
-    const demoBoard: Board = {
-      id: demoId,
-      title: 'Product Launch',
-      createdAt: Date.now(),
-      columns: [
-        {
-          id: generateId(),
-          title: 'To Do',
-          color: 'bg-slate-500',
-          category: 'todo',
-          cards: [],
-        },
-        {
-          id: generateId(),
-          title: 'In Progress',
-          color: 'bg-blue-500',
-          category: 'doing',
-          cards: [],
-        },
-        {
-          id: generateId(),
-          title: 'Done',
-          color: 'bg-emerald-500',
-          category: 'done',
-          cards: [],
-        },
-      ],
-    }
-    setBoards([demoBoard])
-    setActiveBoardId(demoId)
+    void loadBoards()
   }, [])
 
   useEffect(() => {
-    if (boards.length > 0) {
-      window.localStorage.setItem('kanban-boards', JSON.stringify(boards))
+    if (!hasLoadedRef.current || storageMode === 'loading') return
+
+    const serialized = JSON.stringify(boards)
+    if (serialized === lastSerializedRef.current) return
+    lastSerializedRef.current = serialized
+
+    if (storageMode === 'local') {
+      window.localStorage.setItem('kanban-boards', serialized)
+      return
     }
-  }, [boards])
+
+    const saveBoards = async () => {
+      savingRef.current = true
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/state`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            boards,
+            revision: remoteRevisionRef.current,
+            updatedAt: remoteUpdatedAtRef.current,
+          }),
+        })
+
+        if (response.status === 409) {
+          const conflict = await response.json() as { state: ApiState }
+          const mergedBoards = mergeBoards(remoteBoardsRef.current, boards, conflict.state.boards)
+          const retryResponse = await fetch(`${API_BASE_URL}/api/state`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              boards: mergedBoards,
+              revision: conflict.state.revision,
+            }),
+          })
+
+          if (!retryResponse.ok) {
+            lastSerializedRef.current = JSON.stringify(remoteBoardsRef.current)
+            setSyncError('Remote changes exist; your local edit is still visible but was not saved.')
+            return
+          }
+
+          const mergedState = await retryResponse.json() as ApiState
+          remoteBoardsRef.current = deepClone(mergedState.boards)
+          remoteRevisionRef.current = mergedState.revision
+          remoteUpdatedAtRef.current = mergedState.updatedAt
+          lastSerializedRef.current = JSON.stringify(mergedState.boards)
+          setBoards(mergedState.boards)
+          setActiveBoardId((current) => {
+            if (current && mergedState.boards.some((board) => board.id === current)) return current
+            return mergedState.boards[0]?.id ?? null
+          })
+          setSyncError('Remote and local changes were merged.')
+          return
+        }
+
+        if (!response.ok) throw new Error(`Offline API returned ${response.status}`)
+
+        const state = await response.json() as ApiState
+        remoteBoardsRef.current = deepClone(state.boards)
+        remoteRevisionRef.current = state.revision
+        remoteUpdatedAtRef.current = state.updatedAt
+        lastSerializedRef.current = JSON.stringify(state.boards)
+        setSyncError(null)
+      } catch (error) {
+        console.error(error)
+        lastSerializedRef.current = JSON.stringify(remoteBoardsRef.current)
+        setSyncError('Offline sync failed; retrying on the next change.')
+      } finally {
+        savingRef.current = false
+      }
+    }
+
+    void saveBoards()
+  }, [boards, storageMode])
+
+  useEffect(() => {
+    if (storageMode !== 'api') return
+
+    const interval = window.setInterval(async () => {
+      if (savingRef.current) return
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/state`, { cache: 'no-store' })
+        if (!response.ok) throw new Error(`Offline API returned ${response.status}`)
+
+        const state = await response.json() as ApiState
+        const serialized = JSON.stringify(state.boards)
+        if (state.revision === remoteRevisionRef.current || serialized === lastSerializedRef.current) {
+          return
+        }
+
+        remoteBoardsRef.current = deepClone(state.boards)
+        remoteRevisionRef.current = state.revision
+        remoteUpdatedAtRef.current = state.updatedAt
+        lastSerializedRef.current = serialized
+        setBoards(state.boards)
+        setActiveBoardId((current) => {
+          if (current && state.boards.some((board) => board.id === current)) return current
+          return state.boards[0]?.id ?? null
+        })
+        setLastActivity(Date.now())
+        setSyncError(null)
+      } catch (error) {
+        console.error(error)
+        setSyncError('Offline API is currently unreachable.')
+      }
+    }, 1200)
+
+    return () => window.clearInterval(interval)
+  }, [storageMode])
+
+  useEffect(() => {
+    if (storageMode !== 'api') {
+      setMcpStatus(null)
+      return
+    }
+
+    const loadMcpStatus = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/mcp-status`, { cache: 'no-store' })
+        if (!response.ok) throw new Error(`Offline API returned ${response.status}`)
+        setMcpStatus(await response.json() as McpStatus)
+      } catch (error) {
+        console.error(error)
+        setMcpStatus({ connected: false, pid: null, updatedAt: null, ageMs: null })
+      }
+    }
+
+    void loadMcpStatus()
+    const interval = window.setInterval(loadMcpStatus, 2500)
+
+    return () => window.clearInterval(interval)
+  }, [storageMode])
 
   useEffect(() => {
     const root = document.documentElement
@@ -392,10 +726,38 @@ const App = () => {
       const col = board.columns.find((c) => c.id === colId)
       if (!col) return prev
       col.cards = col.cards.filter((c) => c.id !== cardId)
-      col.cards = col.cards.filter((c) => c.id !== cardId)
       return next
     })
     setDeletedCount((prev) => prev + 1)
+    setLastActivity(Date.now())
+  }
+
+  const handleCardCopy = (colId: string, cardId: string) => {
+    setBoards((prev) => {
+      const next = deepClone(prev)
+      const board = next.find((b) => b.id === activeBoardId)
+      if (!board) return prev
+      const col = board.columns.find((c) => c.id === colId)
+      if (!col) return prev
+      const cardIndex = col.cards.findIndex((c) => c.id === cardId)
+      if (cardIndex === -1) return prev
+
+      const sourceCard = col.cards[cardIndex]
+      const copiedCard: Card = {
+        ...sourceCard,
+        id: generateId(),
+        title: `${sourceCard.title} (Copy)`,
+        createdAt: Date.now(),
+        subtasks: sourceCard.subtasks?.map((subtask) => ({
+          ...subtask,
+          id: generateId(),
+        })),
+      }
+
+      if (!sourceCard.completedAt) delete copiedCard.completedAt
+      col.cards.splice(cardIndex + 1, 0, copiedCard)
+      return next
+    })
     setLastActivity(Date.now())
   }
 
@@ -436,12 +798,28 @@ const App = () => {
                 Kanban<span className="text-primary">Flow</span>
               </h1>
               <p className="text-xs font-medium text-muted-foreground">
-                Workspace
+                {storageMode === 'api' ? 'Offline API live' : storageMode === 'local' ? 'Browser local' : 'Loading'}
+                {syncError ? ` - ${syncError}` : ''}
               </p>
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${
+                mcpStatus?.connected
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  : 'border-border bg-secondary/60 text-muted-foreground'
+              }`}
+              title={mcpStatus?.connected ? `MCP pid ${mcpStatus.pid ?? 'unknown'}` : 'Kanban MCP is not connected'}
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  mcpStatus?.connected ? 'bg-emerald-500' : 'bg-muted-foreground/50'
+                }`}
+              />
+              MCP {mcpStatus?.connected ? 'Connected' : 'Offline'}
+            </div>
             <Button variant="ghost" onClick={() => setDarkMode((prev) => !prev)}>
               {darkMode ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} />}
             </Button>
@@ -469,9 +847,11 @@ const App = () => {
                   const reader = new FileReader()
                   reader.onload = (ev) => {
                     try {
-                      const parsed = JSON.parse(String(ev.target?.result)) as Board[]
-                      setBoards(parsed)
-                      setActiveBoardId(parsed.at(0)?.id ?? null)
+                      const parsed = JSON.parse(String(ev.target?.result)) as Board[] | ApiState
+                      const importedBoards = Array.isArray(parsed) ? parsed : parsed.boards
+                      if (!Array.isArray(importedBoards)) throw new Error('Missing boards array')
+                      setBoards(importedBoards)
+                      setActiveBoardId(importedBoards.at(0)?.id ?? null)
                     } catch (error) {
                       console.error('Invalid JSON file', error)
                     }
@@ -632,6 +1012,17 @@ const App = () => {
                                   className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
                                 >
                                   <Edit2 size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Copy task"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleCardCopy(col.id, card.id)
+                                  }}
+                                  className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                                >
+                                  <Copy size={14} />
                                 </button>
                                 <button
                                   type="button"
@@ -940,8 +1331,8 @@ const ColumnForm = ({
           <label className="mb-2 block text-sm font-medium text-muted-foreground">
             Column Type
           </label>
-          <div className="grid grid-cols-3 gap-2">
-            {(['doing', 'done', 'bugs', 'none'] as const).map((cat) => (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {(['todo', 'doing', 'done', 'bugs', 'none'] as const).map((cat) => (
               <button
                 key={cat}
                 type="button"

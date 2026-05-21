@@ -12,8 +12,17 @@ A single-page Kanban Board application built with React, TypeScript, Vite, and T
 # Install dependencies
 npm install
 
-# Run development server (port 5173 by default)
+# Run development server (port 4173)
 npm run dev
+
+# Run local offline mode with live JSON storage and the HTTP MCP server
+npm run dev:offline
+
+# Run the Kanban MCP server over stdio
+npm run mcp
+
+# Run the Kanban MCP server over HTTP for Codex
+npm run mcp:http
 
 # Build for production
 npm run build
@@ -31,6 +40,8 @@ npm run deploy
 - **Everything is in `src/App.tsx`**: All components (Modal, Button, InputGroup, Forms), state management, and logic are contained in a single 1000+ line file
 - **No routing**: Board switching handled via state
 - **Local storage persistence**: Boards auto-save to localStorage on every change
+- **Offline API persistence**: In `npm run dev:offline`, the app syncs to `data/kanban.json` through `server/offline-server.mjs`
+- **MCP access**: `server/mcp-http-server.mjs` exposes read/write tools for Codex over HTTP at `http://127.0.0.1:4175/mcp`; `server/mcp-server.mjs` keeps the stdio transport for clients that launch commands
 
 ### Core Data Types (lines 46-78 in App.tsx)
 - `Card`: Individual task with title, description, and priority
