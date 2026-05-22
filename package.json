@@ -10,6 +10,7 @@
     "dev:offline": "node server/dev-offline.mjs",
     "mcp": "node server/mcp-server.mjs",
     "mcp:http": "node server/mcp-http-server.mjs",
+    "test": "node --test",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "predeploy": "npm run build",

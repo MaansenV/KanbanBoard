@@ -22,6 +22,7 @@ export const mcpStatusFilePath = MCP_STATUS_FILE
 
 const now = () => Date.now()
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const parseStoredJson = (raw) => JSON.parse(raw.replace(/^\uFEFF/, ''))
 
 export const writeMcpStatus = async ({ connected = true } = {}) => {
   const status = {
@@ -39,7 +40,7 @@ export const writeMcpStatus = async ({ connected = true } = {}) => {
 export const readMcpStatus = async () => {
   try {
     const raw = await readFile(MCP_STATUS_FILE, 'utf8')
-    const status = JSON.parse(raw)
+    const status = parseStoredJson(raw)
     const updatedAt = Number.isFinite(status.updatedAt) ? status.updatedAt : 0
     const ageMs = now() - updatedAt
 
@@ -179,7 +180,7 @@ const withWriteLock = async (operation) => {
 export const readState = async () => {
   try {
     const raw = await readFile(DATA_FILE, 'utf8')
-    return normalizeState(JSON.parse(raw))
+    return normalizeState(parseStoredJson(raw))
   } catch (error) {
     if (error.code !== 'ENOENT') throw error
     const state = normalizeState({ boards: [createDefaultBoard()] })

@@ -10,10 +10,14 @@ import {
   Layout,
   MoreHorizontal,
   Calendar,
+  ChevronDown,
+  ChevronRight,
   CheckCircle2,
   AlertCircle,
   Clock,
-  Copy
+  Copy,
+  Search,
+  SlidersHorizontal
 } from 'lucide-react'
 import type { FormEvent, ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -72,11 +76,36 @@ type Column = {
   cards: Card[]
 }
 
+type CategoryKey = Column['category']
+
 type Board = {
   id: string
   title: string
   createdAt?: number
   columns: Column[]
+}
+
+type PriorityFilter = PriorityKey | 'all'
+type CategoryFilter = CategoryKey | 'all'
+type CardSortMode = 'manual' | 'priority-desc' | 'priority-asc' | 'newest' | 'oldest' | 'title'
+
+type VisibleCard = {
+  card: Card
+  originalIndex: number
+}
+
+type VisibleColumn = Omit<Column, 'cards'> & {
+  cards: VisibleCard[]
+  sourceColumn: Column
+  totalCards: number
+}
+
+type DeletedTaskSnapshot = {
+  boardId: string
+  columnId: string
+  card: Card
+  index: number
+  deletedAt: number
 }
 
 type ModalType =
@@ -165,6 +194,23 @@ const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutM
 }
 
 const stableStringify = (value: unknown) => JSON.stringify(value)
+const FOLDED_TASKS_STORAGE_KEY = 'kanban-folded-task-ids'
+const CATEGORY_LABELS: Record<CategoryKey, string> = {
+  todo: 'To Do',
+  doing: 'Doing',
+  done: 'Done',
+  bugs: 'Bugs',
+  none: 'None',
+}
+
+const SORT_LABELS: Record<CardSortMode, string> = {
+  manual: 'Manual',
+  'priority-desc': 'Priority high',
+  'priority-asc': 'Priority low',
+  newest: 'Newest',
+  oldest: 'Oldest',
+  title: 'Title A-Z',
+}
 
 const mergeValue = <T,>(baseValue: T | undefined, localValue: T | undefined, remoteValue: T | undefined): T | undefined => {
   const baseSerialized = stableStringify(baseValue)
@@ -429,12 +475,36 @@ const App = () => {
   const [storageMode, setStorageMode] = useState<StorageMode>('loading')
   const [syncError, setSyncError] = useState<string | null>(null)
   const [mcpStatus, setMcpStatus] = useState<McpStatus | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all')
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
+  const [sortMode, setSortMode] = useState<CardSortMode>('manual')
+  const [deletedTaskUndo, setDeletedTaskUndo] = useState<DeletedTaskSnapshot | null>(null)
+  const [foldedTaskIds, setFoldedTaskIds] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set()
+    try {
+      const saved = window.localStorage.getItem(FOLDED_TASKS_STORAGE_KEY)
+      const parsed = saved ? JSON.parse(saved) : []
+      return new Set(Array.isArray(parsed) ? parsed.map(String) : [])
+    } catch (error) {
+      console.error('Could not load folded task state.', error)
+      return new Set()
+    }
+  })
   const hasLoadedRef = useRef(false)
   const remoteBoardsRef = useRef<Board[]>([])
   const remoteRevisionRef = useRef<number | null>(null)
   const remoteUpdatedAtRef = useRef<number | null>(null)
   const savingRef = useRef(false)
   const lastSerializedRef = useRef('')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(
+      FOLDED_TASKS_STORAGE_KEY,
+      JSON.stringify(Array.from(foldedTaskIds)),
+    )
+  }, [foldedTaskIds])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -637,10 +707,81 @@ const App = () => {
     root.classList.toggle('dark', darkMode)
   }, [darkMode])
 
+  useEffect(() => {
+    if (!deletedTaskUndo) return
+    const timeout = window.setTimeout(() => setDeletedTaskUndo(null), 7000)
+    return () => window.clearTimeout(timeout)
+  }, [deletedTaskUndo])
+
   const activeBoard = useMemo(
     () => boards.find((b) => b.id === activeBoardId) ?? null,
     [boards, activeBoardId],
   )
+
+  const visibleColumns = useMemo<VisibleColumn[]>(() => {
+    if (!activeBoard) return []
+
+    const query = searchQuery.trim().toLowerCase()
+    const matchesSearch = (card: Card) => {
+      if (!query) return true
+      const subtaskText = card.subtasks?.map((subtask) => subtask.title).join(' ') ?? ''
+      return `${card.title} ${card.description ?? ''} ${subtaskText} ${card.id}`
+        .toLowerCase()
+        .includes(query)
+    }
+
+    const sortCards = (cards: VisibleCard[]) => {
+      const sorted = [...cards]
+      sorted.sort((left, right) => {
+        switch (sortMode) {
+          case 'priority-desc':
+            return PRIORITIES[right.card.priority].value - PRIORITIES[left.card.priority].value
+          case 'priority-asc':
+            return PRIORITIES[left.card.priority].value - PRIORITIES[right.card.priority].value
+          case 'newest':
+            return (right.card.createdAt ?? 0) - (left.card.createdAt ?? 0)
+          case 'oldest':
+            return (left.card.createdAt ?? 0) - (right.card.createdAt ?? 0)
+          case 'title':
+            return left.card.title.localeCompare(right.card.title)
+          case 'manual':
+          default:
+            return left.originalIndex - right.originalIndex
+        }
+      })
+      return sorted
+    }
+
+    return activeBoard.columns
+      .filter((column) => categoryFilter === 'all' || column.category === categoryFilter)
+      .map((column) => ({
+        ...column,
+        sourceColumn: column,
+        totalCards: column.cards.length,
+        cards: sortCards(
+          column.cards
+            .map((card, originalIndex) => ({ card, originalIndex }))
+            .filter(({ card }) => priorityFilter === 'all' || card.priority === priorityFilter)
+            .filter(({ card }) => matchesSearch(card)),
+        ),
+      }))
+  }, [activeBoard, categoryFilter, priorityFilter, searchQuery, sortMode])
+
+  const visibleTaskCount = useMemo(
+    () => visibleColumns.reduce((sum, column) => sum + column.cards.length, 0),
+    [visibleColumns],
+  )
+
+  const totalTaskCount = useMemo(
+    () => activeBoard?.columns.reduce((sum, column) => sum + column.cards.length, 0) ?? 0,
+    [activeBoard],
+  )
+
+  const hasActiveFilters =
+    searchQuery.trim() !== '' ||
+    priorityFilter !== 'all' ||
+    categoryFilter !== 'all' ||
+    sortMode !== 'manual'
 
   const handleDragStart = (
     e: React.DragEvent<HTMLElement>,
@@ -718,7 +859,13 @@ const App = () => {
   }
 
   const handleCardDeletion = (colId: string, cardId: string) => {
-    if (!window.confirm('Delete task?')) return
+    if (!activeBoardId) return
+    const currentBoard = boards.find((board) => board.id === activeBoardId)
+    const currentColumn = currentBoard?.columns.find((column) => column.id === colId)
+    const cardIndex = currentColumn?.cards.findIndex((card) => card.id === cardId) ?? -1
+    const deletedCard = cardIndex >= 0 ? currentColumn?.cards[cardIndex] : null
+    if (!deletedCard) return
+
     setBoards((prev) => {
       const next = deepClone(prev)
       const board = next.find((b) => b.id === activeBoardId)
@@ -728,7 +875,39 @@ const App = () => {
       col.cards = col.cards.filter((c) => c.id !== cardId)
       return next
     })
+    setDeletedTaskUndo({
+      boardId: activeBoardId,
+      columnId: colId,
+      card: deepClone(deletedCard),
+      index: cardIndex,
+      deletedAt: Date.now(),
+    })
     setDeletedCount((prev) => prev + 1)
+    setLastActivity(Date.now())
+  }
+
+  const handleUndoTaskDeletion = () => {
+    if (!deletedTaskUndo) return
+    const snapshot = deletedTaskUndo
+    const currentBoard = boards.find((board) => board.id === snapshot.boardId)
+    const currentColumn = currentBoard?.columns.find((column) => column.id === snapshot.columnId)
+    if (!currentColumn || currentColumn.cards.some((card) => card.id === snapshot.card.id)) {
+      setDeletedTaskUndo(null)
+      return
+    }
+
+    setBoards((prev) => {
+      const next = deepClone(prev)
+      const board = next.find((b) => b.id === snapshot.boardId)
+      const column = board?.columns.find((col) => col.id === snapshot.columnId)
+      if (!column || column.cards.some((card) => card.id === snapshot.card.id)) return prev
+
+      const index = Math.max(0, Math.min(snapshot.index, column.cards.length))
+      column.cards.splice(index, 0, snapshot.card)
+      return next
+    })
+    setDeletedTaskUndo(null)
+    setDeletedCount((prev) => Math.max(0, prev - 1))
     setLastActivity(Date.now())
   }
 
@@ -759,6 +938,18 @@ const App = () => {
       return next
     })
     setLastActivity(Date.now())
+  }
+
+  const handleTaskFoldToggle = (cardId: string) => {
+    setFoldedTaskIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(cardId)) {
+        next.delete(cardId)
+      } else {
+        next.add(cardId)
+      }
+      return next
+    })
   }
 
   const handleSubtaskToggle = (colId: string, cardId: string, subtaskId: string) => {
@@ -917,10 +1108,89 @@ const App = () => {
               </button>
             </div>
 
+            {activeBoard && (
+              <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border bg-secondary/30 p-3 sm:flex-row sm:items-center">
+                <div className="relative min-w-[220px] flex-1">
+                  <Search
+                    size={16}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  />
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search tasks..."
+                    className="h-10 w-full rounded-lg border border-input bg-background/60 pl-9 pr-3 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-background/60 px-3 py-2 text-muted-foreground">
+                    <SlidersHorizontal size={15} />
+                    <span className="text-xs font-semibold">
+                      {visibleTaskCount}/{totalTaskCount}
+                    </span>
+                  </div>
+                  <select
+                    value={priorityFilter}
+                    onChange={(e) => setPriorityFilter(e.target.value as PriorityFilter)}
+                    className="h-10 rounded-lg border border-input bg-background/60 px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    aria-label="Filter by priority"
+                  >
+                    <option value="all">All priorities</option>
+                    {Object.entries(PRIORITIES).map(([key, config]) => (
+                      <option key={key} value={key}>
+                        {config.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
+                    className="h-10 rounded-lg border border-input bg-background/60 px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    aria-label="Filter by column type"
+                  >
+                    <option value="all">All columns</option>
+                    {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+                      <option key={key} value={key}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value as CardSortMode)}
+                    className="h-10 rounded-lg border border-input bg-background/60 px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    aria-label="Sort tasks"
+                  >
+                    {Object.entries(SORT_LABELS).map(([key, label]) => (
+                      <option key={key} value={key}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  {hasActiveFilters && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('')
+                        setPriorityFilter('all')
+                        setCategoryFilter('all')
+                        setSortMode('manual')
+                      }}
+                      className="flex h-10 items-center gap-2 rounded-lg border border-border bg-background/60 px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      <X size={15} /> Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {activeBoard ? (
               <div className="flex-1 overflow-x-auto overflow-y-hidden rounded-3xl glass-panel p-6">
                 <div className="flex h-full min-w-max gap-6">
-                  {activeBoard.columns.map((col) => (
+                  {visibleColumns.map((col) => (
                     <div
                       key={col.id}
                       draggable
@@ -940,14 +1210,16 @@ const App = () => {
                             {col.title}
                           </span>
                           <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-background/50 px-1.5 text-xs font-medium text-muted-foreground">
-                            {col.cards.length}
+                            {hasActiveFilters && col.cards.length !== col.totalCards
+                              ? `${col.cards.length}/${col.totalCards}`
+                              : col.totalCards}
                           </span>
                         </div>
                         <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                           <button
                             type="button"
                             onClick={() =>
-                              setModal({ type: 'editColumn', data: { boardId: activeBoardId, col } })
+                              setModal({ type: 'editColumn', data: { boardId: activeBoardId, col: col.sourceColumn } })
                             }
                             className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
                           >
@@ -977,115 +1249,143 @@ const App = () => {
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={() => handleDropCard(col.id)}
                       >
-                        {col.cards.map((card, idx) => (
-                          <div
-                            key={card.id}
-                            draggable
-                            onDragStart={(e) => {
-                              e.stopPropagation()
-                              handleDragStart(e, 'card', card.id, col.id)
-                            }}
-                            onDragEnd={handleDragEnd}
-                            onDrop={(e) => {
-                              e.stopPropagation()
-                              handleDropCard(col.id, idx)
-                            }}
-                            className="group/card relative cursor-grab rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20"
-                          >
-                            <div className="mb-3 flex items-start gap-3">
-                              <span
-                                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${PRIORITIES[card.priority]?.color}`}
-                              >
-                                {PRIORITIES[card.priority]?.icon}
-                                {PRIORITIES[card.priority]?.label}
-                              </span>
-                              <div className="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/card:opacity-100">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setModal({
-                                      type: 'editCard',
-                                      data: { boardId: activeBoardId, colId: col.id, card },
-                                    })
-                                  }}
-                                  className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                        {col.cards.map(({ card, originalIndex }) => {
+                          const subtaskCount = card.subtasks?.length ?? 0
+                          const completedSubtaskCount = card.subtasks?.filter((task) => task.completed).length ?? 0
+                          const canFold = Boolean(card.description) || subtaskCount > 0
+                          const isFolded = foldedTaskIds.has(card.id)
+
+                          return (
+                            <div
+                              key={card.id}
+                              draggable
+                              onDragStart={(e) => {
+                                e.stopPropagation()
+                                handleDragStart(e, 'card', card.id, col.id)
+                              }}
+                              onDragEnd={handleDragEnd}
+                              onDrop={(e) => {
+                                e.stopPropagation()
+                                handleDropCard(col.id, originalIndex)
+                              }}
+                              className="group/card relative cursor-grab rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20"
+                            >
+                              <div className="mb-3 flex items-start gap-3">
+                                <span
+                                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${PRIORITIES[card.priority]?.color}`}
                                 >
-                                  <Edit2 size={14} />
-                                </button>
-                                <button
-                                  type="button"
-                                  title="Copy task"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleCardCopy(col.id, card.id)
-                                  }}
-                                  className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                                >
-                                  <Copy size={14} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleCardDeletion(col.id, card.id)
-                                  }}
-                                  className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
+                                  {PRIORITIES[card.priority]?.icon}
+                                  {PRIORITIES[card.priority]?.label}
+                                </span>
+                                <div className="ml-auto flex shrink-0 items-center gap-1">
+                                  {canFold && (
+                                    <button
+                                      type="button"
+                                      title={isFolded ? 'Expand task' : 'Fold task'}
+                                      aria-label={isFolded ? 'Expand task' : 'Fold task'}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleTaskFoldToggle(card.id)
+                                      }}
+                                      className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                                    >
+                                      {isFolded ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                                    </button>
+                                  )}
+                                  <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setModal({
+                                          type: 'editCard',
+                                          data: { boardId: activeBoardId, colId: col.id, card },
+                                        })
+                                      }}
+                                      className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                                    >
+                                      <Edit2 size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Copy task"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleCardCopy(col.id, card.id)
+                                      }}
+                                      className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                                    >
+                                      <Copy size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleCardDeletion(col.id, card.id)
+                                      }}
+                                      className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                            <h4 className="mb-2 font-semibold text-card-foreground">
-                              {card.title}
-                            </h4>
-                            {card.description && (
-                              <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
-                                {card.description}
-                              </p>
-                            )}
-                            {card.subtasks && card.subtasks.length > 0 && (
-                              <div className="mt-3 space-y-1">
-                                {card.subtasks.map((subtask) => (
-                                  <div
-                                    key={subtask.id}
-                                    className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleSubtaskToggle(col.id, card.id, subtask.id)
-                                    }}
-                                  >
-                                    <div className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors ${subtask.completed ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground'}`}>
-                                      {subtask.completed && <CheckCircle2 size={10} />}
+                              <h4 className={`mb-2 font-semibold text-card-foreground ${isFolded ? 'line-clamp-2' : ''}`}>
+                                {card.title}
+                              </h4>
+                              {!isFolded && card.description && (
+                                <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
+                                  {card.description}
+                                </p>
+                              )}
+                              {!isFolded && card.subtasks && card.subtasks.length > 0 && (
+                                <div className="mt-3 space-y-1">
+                                  {card.subtasks.map((subtask) => (
+                                    <div
+                                      key={subtask.id}
+                                      className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleSubtaskToggle(col.id, card.id, subtask.id)
+                                      }}
+                                    >
+                                      <div className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors ${subtask.completed ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground'}`}>
+                                        {subtask.completed && <CheckCircle2 size={10} />}
+                                      </div>
+                                      <span className={subtask.completed ? 'line-through opacity-50' : ''}>
+                                        {subtask.title}
+                                      </span>
                                     </div>
-                                    <span className={subtask.completed ? 'line-through opacity-50' : ''}>
-                                      {subtask.title}
+                                  ))}
+                                </div>
+                              )}
+                              <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+                                <div className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
+                                  <span>ID: {card.id.slice(0, 4)}</span>
+                                  {subtaskCount > 0 && (
+                                    <div className="flex items-center gap-1" title="Sub-tasks">
+                                      <CheckCircle2 size={12} />
+                                      <span>
+                                        {completedSubtaskCount}/{subtaskCount}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {isFolded && canFold && (
+                                    <span className="rounded-full bg-secondary px-1.5 py-0.5">
+                                      folded
                                     </span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
-                              <div className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
-                                <span>ID: {card.id.slice(0, 4)}</span>
-                                {card.subtasks && card.subtasks.length > 0 && (
-                                  <div className="flex items-center gap-1" title="Sub-tasks">
-                                    <CheckCircle2 size={12} />
-                                    <span>
-                                      {card.subtasks.filter(t => t.completed).length}/{card.subtasks.length}
-                                    </span>
-                                  </div>
-                                )}
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          )
+                        })}
                         {col.cards.length === 0 && (
                           <div className="flex h-32 flex-col items-center justify-center rounded-xl border-2 border-dashed border-border text-sm font-medium text-muted-foreground">
                             <div className="mb-2 rounded-full bg-secondary p-3">
                               <Calendar size={20} />
                             </div>
-                            <span>No tasks yet</span>
+                            <span>{hasActiveFilters && col.totalCards > 0 ? 'No matching tasks' : 'No tasks yet'}</span>
                           </div>
                         )}
                       </div>
@@ -1226,6 +1526,32 @@ const App = () => {
           setModal({ type: null })
         }}
       />
+
+      {deletedTaskUndo && (
+        <div className="fixed bottom-6 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-2xl border border-border bg-card p-3 text-card-foreground shadow-2xl">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">Task deleted</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {deletedTaskUndo.card.title}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleUndoTaskDeletion}
+            className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            onClick={() => setDeletedTaskUndo(null)}
+            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Dismiss undo"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
     </div>
   )
 }
