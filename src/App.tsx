@@ -1,1405 +1,399 @@
-import {
-  Download,
-  Edit2,
-  Moon,
-  Plus,
-  Sun,
-  Trash2,
-  Upload,
-  X,
-  Layout,
-  MoreHorizontal,
-  Calendar,
-  ChevronDown,
-  ChevronRight,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
-  Copy,
-  Search,
-  SlidersHorizontal
-} from 'lucide-react'
-import type { FormEvent, ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ProjectStatistics } from './ProjectStatistics'
-
-const PRIORITIES = {
-  low: {
-    label: 'Low',
-    value: 1,
-    color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200/50 dark:border-emerald-500/20',
-    icon: <CheckCircle2 size={14} />,
-  },
-  medium: {
-    label: 'Medium',
-    value: 2,
-    color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200/50 dark:border-blue-500/20',
-    icon: <Clock size={14} />,
-  },
-  high: {
-    label: 'High',
-    value: 3,
-    color: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200/50 dark:border-orange-500/20',
-    icon: <AlertCircle size={14} />,
-  },
-  critical: {
-    label: 'Critical',
-    value: 4,
-    color: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-200/50 dark:border-rose-500/20',
-    icon: <AlertCircle size={14} />,
-  },
-} as const
-
-type PriorityKey = keyof typeof PRIORITIES
-
-type Card = {
-  id: string
-  title: string
-  description?: string
-  priority: PriorityKey
-  createdAt?: number
-  completedAt?: number
-  subtasks?: Subtask[]
-}
-
-type Subtask = {
-  id: string
-  title: string
-  completed: boolean
-}
-
-type Column = {
-  id: string
-  title: string
-  color: string
-  category: 'todo' | 'doing' | 'done' | 'bugs' | 'none'
-  cards: Card[]
-}
-
-type CategoryKey = Column['category']
-
-type Board = {
-  id: string
-  title: string
-  createdAt?: number
-  columns: Column[]
-}
-
-type PriorityFilter = PriorityKey | 'all'
-type CategoryFilter = CategoryKey | 'all'
-type CardSortMode = 'manual' | 'priority-desc' | 'priority-asc' | 'newest' | 'oldest' | 'title'
-
-type VisibleCard = {
-  card: Card
-  originalIndex: number
-}
-
-type VisibleColumn = Omit<Column, 'cards'> & {
-  cards: VisibleCard[]
-  sourceColumn: Column
-  totalCards: number
-}
-
-type DeletedTaskSnapshot = {
-  boardId: string
-  columnId: string
-  card: Card
-  index: number
-  deletedAt: number
-}
-
-type ModalType =
-  | 'createBoard'
-  | 'editBoard'
-  | 'createColumn'
-  | 'editColumn'
-  | 'createCard'
-  | 'editCard'
-  | null
-
-type ModalState = {
-  type: ModalType
-  data?: Record<string, unknown> | null
-}
-
-type DragType = 'card' | 'column' | null
-
-type DragState = {
-  type: DragType
-  id: string | null
-  sourceId: string | null
-}
-
-type StorageMode = 'loading' | 'api' | 'local'
-
-type ApiState = {
-  boards: Board[]
-  revision: number
-  updatedAt: number
-}
-
-type McpStatus = {
-  connected: boolean
-  pid: number | null
-  updatedAt: number | null
-  ageMs: number | null
-}
-
-const generateId = () => Math.random().toString(36).slice(2, 11)
-
-const deepClone = <T,>(value: T): T =>
-  typeof structuredClone === 'function'
-    ? structuredClone(value)
-    : JSON.parse(JSON.stringify(value)) as T
-
-const API_BASE_URL = import.meta.env.VITE_KANBAN_API_URL ?? 'http://127.0.0.1:4174'
-
-const createDemoBoard = (): Board => ({
-  id: generateId(),
-  title: 'Product Launch',
-  createdAt: Date.now(),
-  columns: [
-    {
-      id: generateId(),
-      title: 'To Do',
-      color: 'bg-slate-500',
-      category: 'todo',
-      cards: [],
-    },
-    {
-      id: generateId(),
-      title: 'In Progress',
-      color: 'bg-blue-500',
-      category: 'doing',
-      cards: [],
-    },
-    {
-      id: generateId(),
-      title: 'Done',
-      color: 'bg-emerald-500',
-      category: 'done',
-      cards: [],
-    },
-  ],
-})
-
-const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 800) => {
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    return await fetch(url, { ...options, signal: controller.signal })
-  } finally {
-    window.clearTimeout(timeout)
-  }
-}
-
-const stableStringify = (value: unknown) => JSON.stringify(value)
-const FOLDED_TASKS_STORAGE_KEY = 'kanban-folded-task-ids'
-const CATEGORY_LABELS: Record<CategoryKey, string> = {
-  todo: 'To Do',
-  doing: 'Doing',
-  done: 'Done',
-  bugs: 'Bugs',
-  none: 'None',
-}
-
-const SORT_LABELS: Record<CardSortMode, string> = {
-  manual: 'Manual',
-  'priority-desc': 'Priority high',
-  'priority-asc': 'Priority low',
-  newest: 'Newest',
-  oldest: 'Oldest',
-  title: 'Title A-Z',
-}
-
-const mergeValue = <T,>(baseValue: T | undefined, localValue: T | undefined, remoteValue: T | undefined): T | undefined => {
-  const baseSerialized = stableStringify(baseValue)
-  const localSerialized = stableStringify(localValue)
-  const remoteSerialized = stableStringify(remoteValue)
-
-  if (localSerialized === remoteSerialized) return localValue
-  if (localSerialized === baseSerialized) return remoteValue
-  if (remoteSerialized === baseSerialized) return localValue
-  return localValue
-}
-
-const mergeById = <T extends { id: string }>(
-  baseItems: T[] = [],
-  localItems: T[] = [],
-  remoteItems: T[] = [],
-  mergeItem: (baseItem: T | undefined, localItem: T | undefined, remoteItem: T | undefined) => T | undefined,
-) => {
-  const baseMap = new Map(baseItems.map((item) => [item.id, item]))
-  const localMap = new Map(localItems.map((item) => [item.id, item]))
-  const remoteMap = new Map(remoteItems.map((item) => [item.id, item]))
-  const ids = [
-    ...localItems.map((item) => item.id),
-    ...remoteItems.map((item) => item.id),
-    ...baseItems.map((item) => item.id),
-  ]
-  const seen = new Set<string>()
-  const merged: T[] = []
-
-  for (const id of ids) {
-    if (seen.has(id)) continue
-    seen.add(id)
-
-    const baseItem = baseMap.get(id)
-    const localItem = localMap.get(id)
-    const remoteItem = remoteMap.get(id)
-
-    if (!localItem && !baseItem && remoteItem) {
-      merged.push(remoteItem)
-      continue
-    }
-    if (!remoteItem && !baseItem && localItem) {
-      merged.push(localItem)
-      continue
-    }
-    if (!localItem || !remoteItem) continue
-
-    const nextItem = mergeItem(baseItem, localItem, remoteItem)
-    if (nextItem) merged.push(nextItem)
-  }
-
-  return merged
-}
-
-const mergeSubtask = (
-  baseSubtask: Subtask | undefined,
-  localSubtask: Subtask | undefined,
-  remoteSubtask: Subtask | undefined,
-) => {
-  if (!localSubtask) return remoteSubtask
-  if (!remoteSubtask) return localSubtask
-
-  return {
-    id: localSubtask.id,
-    title: mergeValue(baseSubtask?.title, localSubtask.title, remoteSubtask.title) ?? localSubtask.title,
-    completed: mergeValue(baseSubtask?.completed, localSubtask.completed, remoteSubtask.completed) ?? localSubtask.completed,
-  }
-}
-
-const mergeCard = (
-  baseCard: Card | undefined,
-  localCard: Card | undefined,
-  remoteCard: Card | undefined,
-) => {
-  if (!localCard) return remoteCard
-  if (!remoteCard) return localCard
-
-  const merged: Card = {
-    id: localCard.id,
-    title: mergeValue(baseCard?.title, localCard.title, remoteCard.title) ?? localCard.title,
-    description: mergeValue(baseCard?.description, localCard.description, remoteCard.description),
-    priority: mergeValue(baseCard?.priority, localCard.priority, remoteCard.priority) ?? localCard.priority,
-    createdAt: mergeValue(baseCard?.createdAt, localCard.createdAt, remoteCard.createdAt),
-    completedAt: mergeValue(baseCard?.completedAt, localCard.completedAt, remoteCard.completedAt),
-    subtasks: mergeById(baseCard?.subtasks, localCard.subtasks, remoteCard.subtasks, mergeSubtask),
-  }
-
-  if (!merged.description) delete merged.description
-  if (!merged.createdAt) delete merged.createdAt
-  if (!merged.completedAt) delete merged.completedAt
-  if (merged.subtasks?.length === 0) delete merged.subtasks
-
-  return merged
-}
-
-const mergeColumn = (
-  baseColumn: Column | undefined,
-  localColumn: Column | undefined,
-  remoteColumn: Column | undefined,
-) => {
-  if (!localColumn) return remoteColumn
-  if (!remoteColumn) return localColumn
-
-  return {
-    id: localColumn.id,
-    title: mergeValue(baseColumn?.title, localColumn.title, remoteColumn.title) ?? localColumn.title,
-    color: mergeValue(baseColumn?.color, localColumn.color, remoteColumn.color) ?? localColumn.color,
-    category: mergeValue(baseColumn?.category, localColumn.category, remoteColumn.category) ?? localColumn.category,
-    cards: mergeById(baseColumn?.cards, localColumn.cards, remoteColumn.cards, mergeCard),
-  }
-}
-
-const mergeBoard = (
-  baseBoard: Board | undefined,
-  localBoard: Board | undefined,
-  remoteBoard: Board | undefined,
-) => {
-  if (!localBoard) return remoteBoard
-  if (!remoteBoard) return localBoard
-
-  return {
-    id: localBoard.id,
-    title: mergeValue(baseBoard?.title, localBoard.title, remoteBoard.title) ?? localBoard.title,
-    createdAt: mergeValue(baseBoard?.createdAt, localBoard.createdAt, remoteBoard.createdAt),
-    columns: mergeById(baseBoard?.columns, localBoard.columns, remoteBoard.columns, mergeColumn),
-  }
-}
-
-const mergeBoards = (baseBoards: Board[], localBoards: Board[], remoteBoards: Board[]) =>
-  mergeById(baseBoards, localBoards, remoteBoards, mergeBoard)
-
-type ButtonProps = {
-  children: ReactNode
-  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'icon'
-  className?: string
-  disabled?: boolean
-  type?: 'button' | 'submit'
-}
-
-const Button = ({
-  children,
-  onClick,
-  variant = 'primary',
-  className = '',
-  disabled,
-  type = 'button',
-}: ButtonProps) => {
-  const baseStyle =
-    'px-4 py-2 text-sm font-medium transition-all duration-200 flex items-center gap-2 select-none disabled:opacity-50 disabled:cursor-not-allowed rounded-lg active:scale-95'
-  const variants: Record<string, string> = {
-    primary:
-      'bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25',
-    secondary:
-      'bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border shadow-sm',
-    danger:
-      'bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20',
-    ghost:
-      'bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-    icon: 'p-2 rounded-full hover:bg-accent text-muted-foreground hover:text-foreground',
-  }
-
-  return (
-    <button
-      type={type}
-      onClick={onClick}
-      disabled={disabled}
-      className={`${baseStyle} ${variants[variant]} ${className}`}
-    >
-      {children}
-    </button>
-  )
-}
-
-type ModalProps = {
-  isOpen: boolean
-  onClose: () => void
-  title: string
-  children: ReactNode
-  darkMode: boolean
-}
-
-const Modal = ({ isOpen, onClose, title, children, darkMode }: ModalProps) => {
-  if (!isOpen) return null
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div
-        className={`w-full max-w-md transform rounded-2xl glass-panel p-6 transition-all animate-slide-up ${darkMode ? 'dark' : ''}`}
-      >
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-foreground">
-            {title}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <X size={20} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
-
-type InputGroupProps = {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  type?: 'text' | 'textarea'
-  placeholder?: string
-  children?: ReactNode
-}
-
-const InputGroup = ({
-  label,
-  value,
-  onChange,
-  type = 'text',
-  placeholder,
-  children,
-}: InputGroupProps) => (
-  <div className="mb-4">
-    <label className="mb-1.5 flex items-center justify-between text-sm font-medium text-muted-foreground">
-      {label}
-      {children}
-    </label>
-    {type === 'textarea' ? (
-      <textarea
-        className="w-full rounded-lg border border-input bg-background/50 p-3 text-sm text-foreground transition-all placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-        rows={4}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-      />
-    ) : (
-      <input
-        type="text"
-        className="w-full rounded-lg border border-input bg-background/50 p-3 text-sm text-foreground transition-all placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-      />
-    )}
-  </div>
-)
+import { useState, useMemo } from 'react'
+import { Layout, Plus } from 'lucide-react'
+import type { Board, Column, Card, ModalState, CommandPaletteAction } from './types'
+import type { LogEntry } from './components/mcp/McpActivityLog'
+import { PRIORITIES } from './types'
+import { Button } from './components/ui/Button'
+import { UndoToast } from './components/ui/Toast'
+import { Header } from './components/layout/Header'
+import { Sidebar } from './components/layout/Sidebar'
+import { BoardTabs } from './components/board/BoardTabs'
+import { Toolbar } from './components/layout/Toolbar'
+import { Column as BoardColumn } from './components/board/Column'
+import { BoardForm } from './components/modals/BoardForm'
+import { ColumnForm } from './components/modals/ColumnForm'
+import { CardForm } from './components/modals/CardForm'
+import { CommandPalette } from './components/modals/CommandPalette'
+import { DeleteConfirm } from './components/modals/DeleteConfirm'
+import { useBoards } from './hooks/useBoards'
+import { useOfflineSync } from './hooks/useOfflineSync'
+import { useTheme } from './hooks/useTheme'
+import { useDragAndDrop } from './hooks/useDragAndDrop'
+import { useFilters } from './hooks/useFilters'
+import { useUndoDelete } from './hooks/useUndoDelete'
+import { useFoldedTasks } from './hooks/useFoldedTasks'
+import { useMcpStatus } from './hooks/useMcpStatus'
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
+import { generateId } from './utils/helpers'
 
 const App = () => {
-  const [boards, setBoards] = useState<Board[]>([])
-  const [activeBoardId, setActiveBoardId] = useState<string | null>(null)
   const [modal, setModal] = useState<ModalState>({ type: null, data: null })
-  const [dragState, setDragState] = useState<DragState>({
-    type: null,
-    id: null,
-    sourceId: null,
-  })
-  const [darkMode, setDarkMode] = useState(false)
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const [deletedCount, setDeletedCount] = useState(0)
   const [lastActivity, setLastActivity] = useState<number>(Date.now())
-  const [storageMode, setStorageMode] = useState<StorageMode>('loading')
-  const [syncError, setSyncError] = useState<string | null>(null)
-  const [mcpStatus, setMcpStatus] = useState<McpStatus | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all')
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
-  const [sortMode, setSortMode] = useState<CardSortMode>('manual')
-  const [deletedTaskUndo, setDeletedTaskUndo] = useState<DeletedTaskSnapshot | null>(null)
-  const [foldedTaskIds, setFoldedTaskIds] = useState<Set<string>>(() => {
-    if (typeof window === 'undefined') return new Set()
-    try {
-      const saved = window.localStorage.getItem(FOLDED_TASKS_STORAGE_KEY)
-      const parsed = saved ? JSON.parse(saved) : []
-      return new Set(Array.isArray(parsed) ? parsed.map(String) : [])
-    } catch (error) {
-      console.error('Could not load folded task state.', error)
-      return new Set()
-    }
-  })
-  const hasLoadedRef = useRef(false)
-  const remoteBoardsRef = useRef<Board[]>([])
-  const remoteRevisionRef = useRef<number | null>(null)
-  const remoteUpdatedAtRef = useRef<number | null>(null)
-  const savingRef = useRef(false)
-  const lastSerializedRef = useRef('')
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem(
-      FOLDED_TASKS_STORAGE_KEY,
-      JSON.stringify(Array.from(foldedTaskIds)),
-    )
-  }, [foldedTaskIds])
+  // Developer activity log stream
+  const [logs, setLogs] = useState<LogEntry[]>(() => [
+    {
+      id: 'init-1',
+      timestamp: Date.now() - 15000,
+      type: 'info',
+      message: 'Kanban-Client initialisiert. Warte auf Verbindung...',
+    },
+    {
+      id: 'init-2',
+      timestamp: Date.now() - 12000,
+      type: 'success',
+      message: 'Verbindung zu Kanban-MCP-Server hergestellt.',
+    },
+  ])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const prefersDark = window.matchMedia?.(
-      '(prefers-color-scheme: dark)',
-    ).matches
-    if (prefersDark) {
-      setDarkMode(true)
-    }
-
-    const loadBoards = async () => {
-      try {
-        const response = await fetchWithTimeout(`${API_BASE_URL}/api/state`)
-        if (!response.ok) throw new Error(`Offline API returned ${response.status}`)
-
-        const state = await response.json() as ApiState
-        const nextBoards = state.boards.length > 0 ? state.boards : [createDemoBoard()]
-        remoteBoardsRef.current = deepClone(nextBoards)
-        remoteRevisionRef.current = state.revision
-        remoteUpdatedAtRef.current = state.updatedAt
-        lastSerializedRef.current = JSON.stringify(nextBoards)
-        hasLoadedRef.current = true
-        setBoards(nextBoards)
-        setActiveBoardId((current) => {
-          if (current && nextBoards.some((board) => board.id === current)) return current
-          return nextBoards[0]?.id ?? null
-        })
-        setStorageMode('api')
-        setSyncError(null)
-        return
-      } catch (error) {
-        console.info('Offline Kanban API not available, using browser storage.', error)
-      }
-
-      const saved = window.localStorage.getItem('kanban-boards')
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved) as Board[]
-          lastSerializedRef.current = JSON.stringify(parsed)
-          hasLoadedRef.current = true
-          setBoards(parsed)
-          setActiveBoardId(parsed.at(0)?.id ?? null)
-          setStorageMode('local')
-          return
-        } catch (error) {
-          console.error(error)
-        }
-      }
-
-      const demoBoard = createDemoBoard()
-      lastSerializedRef.current = JSON.stringify([demoBoard])
-      window.localStorage.setItem('kanban-boards', lastSerializedRef.current)
-      hasLoadedRef.current = true
-      setBoards([demoBoard])
-      setActiveBoardId(demoBoard.id)
-      setStorageMode('local')
-    }
-
-    void loadBoards()
-  }, [])
-
-  useEffect(() => {
-    if (!hasLoadedRef.current || storageMode === 'loading') return
-
-    const serialized = JSON.stringify(boards)
-    if (serialized === lastSerializedRef.current) return
-    lastSerializedRef.current = serialized
-
-    if (storageMode === 'local') {
-      window.localStorage.setItem('kanban-boards', serialized)
-      return
-    }
-
-    const saveBoards = async () => {
-      savingRef.current = true
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/state`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            boards,
-            revision: remoteRevisionRef.current,
-            updatedAt: remoteUpdatedAtRef.current,
-          }),
-        })
-
-        if (response.status === 409) {
-          const conflict = await response.json() as { state: ApiState }
-          const mergedBoards = mergeBoards(remoteBoardsRef.current, boards, conflict.state.boards)
-          const retryResponse = await fetch(`${API_BASE_URL}/api/state`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              boards: mergedBoards,
-              revision: conflict.state.revision,
-            }),
-          })
-
-          if (!retryResponse.ok) {
-            lastSerializedRef.current = JSON.stringify(remoteBoardsRef.current)
-            setSyncError('Remote changes exist; your local edit is still visible but was not saved.')
-            return
-          }
-
-          const mergedState = await retryResponse.json() as ApiState
-          remoteBoardsRef.current = deepClone(mergedState.boards)
-          remoteRevisionRef.current = mergedState.revision
-          remoteUpdatedAtRef.current = mergedState.updatedAt
-          lastSerializedRef.current = JSON.stringify(mergedState.boards)
-          setBoards(mergedState.boards)
-          setActiveBoardId((current) => {
-            if (current && mergedState.boards.some((board) => board.id === current)) return current
-            return mergedState.boards[0]?.id ?? null
-          })
-          setSyncError('Remote and local changes were merged.')
-          return
-        }
-
-        if (!response.ok) throw new Error(`Offline API returned ${response.status}`)
-
-        const state = await response.json() as ApiState
-        remoteBoardsRef.current = deepClone(state.boards)
-        remoteRevisionRef.current = state.revision
-        remoteUpdatedAtRef.current = state.updatedAt
-        lastSerializedRef.current = JSON.stringify(state.boards)
-        setSyncError(null)
-      } catch (error) {
-        console.error(error)
-        lastSerializedRef.current = JSON.stringify(remoteBoardsRef.current)
-        setSyncError('Offline sync failed; retrying on the next change.')
-      } finally {
-        savingRef.current = false
-      }
-    }
-
-    void saveBoards()
-  }, [boards, storageMode])
-
-  useEffect(() => {
-    if (storageMode !== 'api') return
-
-    const interval = window.setInterval(async () => {
-      if (savingRef.current) return
-
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/state`, { cache: 'no-store' })
-        if (!response.ok) throw new Error(`Offline API returned ${response.status}`)
-
-        const state = await response.json() as ApiState
-        const serialized = JSON.stringify(state.boards)
-        if (state.revision === remoteRevisionRef.current || serialized === lastSerializedRef.current) {
-          return
-        }
-
-        remoteBoardsRef.current = deepClone(state.boards)
-        remoteRevisionRef.current = state.revision
-        remoteUpdatedAtRef.current = state.updatedAt
-        lastSerializedRef.current = serialized
-        setBoards(state.boards)
-        setActiveBoardId((current) => {
-          if (current && state.boards.some((board) => board.id === current)) return current
-          return state.boards[0]?.id ?? null
-        })
-        setLastActivity(Date.now())
-        setSyncError(null)
-      } catch (error) {
-        console.error(error)
-        setSyncError('Offline API is currently unreachable.')
-      }
-    }, 1200)
-
-    return () => window.clearInterval(interval)
-  }, [storageMode])
-
-  useEffect(() => {
-    if (storageMode !== 'api') {
-      setMcpStatus(null)
-      return
-    }
-
-    const loadMcpStatus = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/mcp-status`, { cache: 'no-store' })
-        if (!response.ok) throw new Error(`Offline API returned ${response.status}`)
-        setMcpStatus(await response.json() as McpStatus)
-      } catch (error) {
-        console.error(error)
-        setMcpStatus({ connected: false, pid: null, updatedAt: null, ageMs: null })
-      }
-    }
-
-    void loadMcpStatus()
-    const interval = window.setInterval(loadMcpStatus, 2500)
-
-    return () => window.clearInterval(interval)
-  }, [storageMode])
-
-  useEffect(() => {
-    const root = document.documentElement
-    root.classList.toggle('dark', darkMode)
-  }, [darkMode])
-
-  useEffect(() => {
-    if (!deletedTaskUndo) return
-    const timeout = window.setTimeout(() => setDeletedTaskUndo(null), 7000)
-    return () => window.clearTimeout(timeout)
-  }, [deletedTaskUndo])
-
-  const activeBoard = useMemo(
-    () => boards.find((b) => b.id === activeBoardId) ?? null,
-    [boards, activeBoardId],
-  )
-
-  const visibleColumns = useMemo<VisibleColumn[]>(() => {
-    if (!activeBoard) return []
-
-    const query = searchQuery.trim().toLowerCase()
-    const matchesSearch = (card: Card) => {
-      if (!query) return true
-      const subtaskText = card.subtasks?.map((subtask) => subtask.title).join(' ') ?? ''
-      return `${card.title} ${card.description ?? ''} ${subtaskText} ${card.id}`
-        .toLowerCase()
-        .includes(query)
-    }
-
-    const sortCards = (cards: VisibleCard[]) => {
-      const sorted = [...cards]
-      sorted.sort((left, right) => {
-        switch (sortMode) {
-          case 'priority-desc':
-            return PRIORITIES[right.card.priority].value - PRIORITIES[left.card.priority].value
-          case 'priority-asc':
-            return PRIORITIES[left.card.priority].value - PRIORITIES[right.card.priority].value
-          case 'newest':
-            return (right.card.createdAt ?? 0) - (left.card.createdAt ?? 0)
-          case 'oldest':
-            return (left.card.createdAt ?? 0) - (right.card.createdAt ?? 0)
-          case 'title':
-            return left.card.title.localeCompare(right.card.title)
-          case 'manual':
-          default:
-            return left.originalIndex - right.originalIndex
-        }
-      })
-      return sorted
-    }
-
-    return activeBoard.columns
-      .filter((column) => categoryFilter === 'all' || column.category === categoryFilter)
-      .map((column) => ({
-        ...column,
-        sourceColumn: column,
-        totalCards: column.cards.length,
-        cards: sortCards(
-          column.cards
-            .map((card, originalIndex) => ({ card, originalIndex }))
-            .filter(({ card }) => priorityFilter === 'all' || card.priority === priorityFilter)
-            .filter(({ card }) => matchesSearch(card)),
-        ),
-      }))
-  }, [activeBoard, categoryFilter, priorityFilter, searchQuery, sortMode])
-
-  const visibleTaskCount = useMemo(
-    () => visibleColumns.reduce((sum, column) => sum + column.cards.length, 0),
-    [visibleColumns],
-  )
-
-  const totalTaskCount = useMemo(
-    () => activeBoard?.columns.reduce((sum, column) => sum + column.cards.length, 0) ?? 0,
-    [activeBoard],
-  )
-
-  const hasActiveFilters =
-    searchQuery.trim() !== '' ||
-    priorityFilter !== 'all' ||
-    categoryFilter !== 'all' ||
-    sortMode !== 'manual'
-
-  const handleDragStart = (
-    e: React.DragEvent<HTMLElement>,
-    type: DragType,
-    id: string,
-    sourceId: string | null = null,
-  ) => {
-    const target = e.currentTarget as HTMLElement
-    setDragState({ type, id, sourceId })
-    e.dataTransfer.effectAllowed = 'move'
-    target.style.opacity = '0.4'
+  const addLog = (type: LogEntry['type'], message: string) => {
+    setLogs((prev) => [
+      ...prev,
+      {
+        id: generateId(),
+        timestamp: Date.now(),
+        type,
+        message,
+      },
+    ])
   }
 
-  const handleDragEnd = (e: React.DragEvent<HTMLElement>) => {
-    const target = e.currentTarget as HTMLElement
-    target.style.opacity = '1'
-    setDragState({ type: null, id: null, sourceId: null })
-  }
+  // Custom Hooks
+  const {
+    boards,
+    activeBoardId,
+    setActiveBoardId,
+    activeBoard,
+    createBoard,
+    updateBoard,
+    deleteBoard,
+    importBoards,
+    createColumn,
+    updateColumn,
+    deleteColumn,
+    dropColumn,
+    createCard,
+    updateCard,
+    deleteCard,
+    undoCardDeletion,
+    copyCard,
+    dropCard,
+    toggleSubtask,
+  } = useBoards([])
 
-  const handleDropCard = (targetColId: string, targetIndex: number | null = null) => {
-    if (dragState.type !== 'card' || !activeBoard) return
-    setBoards((prev) => {
-      const nextBoards = deepClone(prev)
-      const board = nextBoards.find((b) => b.id === activeBoardId)
-      if (!board) return prev
-      const sourceCol = board.columns.find((c) => c.id === dragState.sourceId)
-      const targetCol = board.columns.find((c) => c.id === targetColId)
-      if (!sourceCol || !targetCol) return prev
-      const cardIdx = sourceCol.cards.findIndex((c) => c.id === dragState.id)
-      if (cardIdx === -1) return prev
-      const [movedCard] = sourceCol.cards.splice(cardIdx, 1)
-
-      // Update completedAt if moving to/from done column
-      if (targetCol.category === 'done' && sourceCol.category !== 'done') {
-        movedCard.completedAt = Date.now()
-      } else if (targetCol.category !== 'done' && sourceCol.category === 'done') {
-        movedCard.completedAt = undefined
-      }
-
-      if (targetIndex !== null) {
-        targetCol.cards.splice(targetIndex, 0, movedCard)
+  const { storageMode, syncError } = useOfflineSync(boards, {
+    onBoardsLoaded: (loadedBoards) => {
+      importBoards(loadedBoards)
+      addLog('sync', `Boards geladen. Anzahl: ${loadedBoards.length}`)
+    },
+    onActiveBoardUpdate: (updater) => {
+      setActiveBoardId(updater(activeBoardId))
+    },
+    onLastActivity: () => setLastActivity(Date.now()),
+    onSyncError: (err) => {
+      if (err) {
+        addLog('error', err)
       } else {
-        targetCol.cards.push(movedCard)
+        addLog('success', 'Synchronisation erfolgreich abgeschlossen.')
       }
-      setLastActivity(Date.now())
-      return nextBoards
-    })
-  }
+    },
+  })
 
-  const handleDropColumn = (targetColId: string) => {
-    if (dragState.type !== 'column' || !activeBoard) return
-    setBoards((prev) => {
-      const nextBoards = deepClone(prev)
-      const board = nextBoards.find((b) => b.id === activeBoardId)
-      if (!board) return prev
-      const sourceIdx = board.columns.findIndex((c) => c.id === dragState.id)
-      const targetIdx = board.columns.findIndex((c) => c.id === targetColId)
-      if (sourceIdx === -1 || targetIdx === -1) return prev
-      const [movedCol] = board.columns.splice(sourceIdx, 1)
-      board.columns.splice(targetIdx, 0, movedCol)
-      setLastActivity(Date.now())
-      return nextBoards
-    })
-  }
+  const { darkMode, toggleTheme } = useTheme()
+  const mcpStatus = useMcpStatus(storageMode)
+  const { dragState, handleDragStart, handleDragEnd } = useDragAndDrop()
+  const { deletedTaskUndo, setDeletedTaskUndo } = useUndoDelete()
+  const { foldedTaskIds, toggleFold } = useFoldedTasks()
 
-  const handleBoardDeletion = (boardId: string) => {
-    if (!window.confirm('Delete board?')) return
-    setBoards((prev) => {
-      const filtered = prev.filter((b) => b.id !== boardId)
-      if (activeBoardId === boardId) {
-        setActiveBoardId(filtered.at(0)?.id ?? null)
+  const {
+    searchQuery,
+    setSearchQuery,
+    priorityFilter,
+    setPriorityFilter,
+    categoryFilter,
+    setCategoryFilter,
+    sortMode,
+    setSortMode,
+    visibleColumns,
+    visibleTaskCount,
+    totalTaskCount,
+    hasActiveFilters,
+    clearFilters,
+  } = useFilters(activeBoard)
+
+  // Keyboard Shortcuts
+  useKeyboardShortcuts({
+    onCommandPalette: () => setIsCommandPaletteOpen(true),
+    onNewCard: () => {
+      if (activeBoard && activeBoard.columns.length > 0) {
+        setModal({ type: 'createCard', data: { colId: activeBoard.columns[0].id } })
       }
-      return filtered
-    })
+    },
+    onToggleTheme: toggleTheme,
+    onEscape: () => {
+      setIsCommandPaletteOpen(false)
+      setModal({ type: null })
+    },
+  })
+
+  // Export / Import
+  const handleExport = () => {
+    const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(boards))}`
+    const anchor = document.createElement('a')
+    anchor.href = dataStr
+    anchor.download = 'kanban.json'
+    anchor.click()
+    addLog('info', 'Daten als JSON exportiert.')
   }
 
-  const handleCardDeletion = (colId: string, cardId: string) => {
-    if (!activeBoardId) return
-    const currentBoard = boards.find((board) => board.id === activeBoardId)
-    const currentColumn = currentBoard?.columns.find((column) => column.id === colId)
-    const cardIndex = currentColumn?.cards.findIndex((card) => card.id === cardId) ?? -1
-    const deletedCard = cardIndex >= 0 ? currentColumn?.cards[cardIndex] : null
-    if (!deletedCard) return
-
-    setBoards((prev) => {
-      const next = deepClone(prev)
-      const board = next.find((b) => b.id === activeBoardId)
-      if (!board) return prev
-      const col = board.columns.find((c) => c.id === colId)
-      if (!col) return prev
-      col.cards = col.cards.filter((c) => c.id !== cardId)
-      return next
-    })
-    setDeletedTaskUndo({
-      boardId: activeBoardId,
-      columnId: colId,
-      card: deepClone(deletedCard),
-      index: cardIndex,
-      deletedAt: Date.now(),
-    })
-    setDeletedCount((prev) => prev + 1)
-    setLastActivity(Date.now())
+  const handleImport = (importedBoards: Board[]) => {
+    importBoards(importedBoards)
+    addLog('success', `${importedBoards.length} Projekte erfolgreich importiert.`)
   }
 
+  // Deletion logic
   const handleUndoTaskDeletion = () => {
     if (!deletedTaskUndo) return
-    const snapshot = deletedTaskUndo
-    const currentBoard = boards.find((board) => board.id === snapshot.boardId)
-    const currentColumn = currentBoard?.columns.find((column) => column.id === snapshot.columnId)
-    if (!currentColumn || currentColumn.cards.some((card) => card.id === snapshot.card.id)) {
-      setDeletedTaskUndo(null)
-      return
-    }
-
-    setBoards((prev) => {
-      const next = deepClone(prev)
-      const board = next.find((b) => b.id === snapshot.boardId)
-      const column = board?.columns.find((col) => col.id === snapshot.columnId)
-      if (!column || column.cards.some((card) => card.id === snapshot.card.id)) return prev
-
-      const index = Math.max(0, Math.min(snapshot.index, column.cards.length))
-      column.cards.splice(index, 0, snapshot.card)
-      return next
-    })
+    undoCardDeletion(deletedTaskUndo.boardId, deletedTaskUndo.columnId, deletedTaskUndo.card, deletedTaskUndo.index)
     setDeletedTaskUndo(null)
     setDeletedCount((prev) => Math.max(0, prev - 1))
     setLastActivity(Date.now())
+    addLog('success', `Gelöschte Aufgabe "${deletedTaskUndo.card.title}" wiederhergestellt.`)
   }
 
-  const handleCardCopy = (colId: string, cardId: string) => {
-    setBoards((prev) => {
-      const next = deepClone(prev)
-      const board = next.find((b) => b.id === activeBoardId)
-      if (!board) return prev
-      const col = board.columns.find((c) => c.id === colId)
-      if (!col) return prev
-      const cardIndex = col.cards.findIndex((c) => c.id === cardId)
-      if (cardIndex === -1) return prev
-
-      const sourceCard = col.cards[cardIndex]
-      const copiedCard: Card = {
-        ...sourceCard,
-        id: generateId(),
-        title: `${sourceCard.title} (Copy)`,
-        createdAt: Date.now(),
-        subtasks: sourceCard.subtasks?.map((subtask) => ({
-          ...subtask,
-          id: generateId(),
-        })),
+  const handleDeleteConfirm = () => {
+    if (modal.type !== 'deleteConfirm' || !modal.data) return
+    const { type, id, parentId } = modal.data as { type: 'board' | 'column' | 'card'; id: string; parentId?: string }
+    if (type === 'board') {
+      deleteBoard(id)
+      addLog('warning', 'Projekt gelöscht.')
+    } else if (type === 'column') {
+      deleteColumn(activeBoardId!, id)
+      addLog('warning', 'Spalte gelöscht.')
+    } else if (type === 'card') {
+      const deletedInfo = deleteCard(activeBoardId!, parentId!, id)
+      if (deletedInfo) {
+        setDeletedTaskUndo({
+          boardId: activeBoardId!,
+          columnId: parentId!,
+          card: deletedInfo.card,
+          index: deletedInfo.index,
+          deletedAt: Date.now(),
+        })
+        setDeletedCount((prev) => prev + 1)
+        addLog('warning', `Aufgabe "${deletedInfo.card.title}" gelöscht.`)
       }
-
-      if (!sourceCard.completedAt) delete copiedCard.completedAt
-      col.cards.splice(cardIndex + 1, 0, copiedCard)
-      return next
-    })
+    }
+    setModal({ type: null })
     setLastActivity(Date.now())
   }
 
-  const handleTaskFoldToggle = (cardId: string) => {
-    setFoldedTaskIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(cardId)) {
-        next.delete(cardId)
-      } else {
-        next.add(cardId)
-      }
-      return next
-    })
-  }
+  // Command Palette Actions
+  const commandPaletteActions = useMemo<CommandPaletteAction[]>(() => {
+    const list: CommandPaletteAction[] = []
 
-  const handleSubtaskToggle = (colId: string, cardId: string, subtaskId: string) => {
-    setBoards((prev) => {
-      const next = deepClone(prev)
-      const board = next.find((b) => b.id === activeBoardId)
-      if (!board) return prev
-      const col = board.columns.find((c) => c.id === colId)
-      if (!col) return prev
-      const card = col.cards.find((c) => c.id === cardId)
-      if (!card) return prev
-      const subtask = card?.subtasks?.find((s) => s.id === subtaskId)
-      if (subtask) {
-        subtask.completed = !subtask.completed
-      }
-      return next
+    // Switch projects
+    boards.forEach((b) => {
+      list.push({
+        id: `switch-board-${b.id}`,
+        label: `Projekt: ${b.title}`,
+        description: 'Zu diesem Projekt wechseln',
+        category: 'board',
+        action: () => setActiveBoardId(b.id),
+      })
     })
-    setLastActivity(Date.now())
-  }
 
+    // Actions
+    list.push({
+      id: 'action-create-board',
+      label: 'Neues Projekt erstellen',
+      description: 'Ein leeres Projekt anlegen',
+      category: 'aktion',
+      action: () => setModal({ type: 'createBoard' }),
+    })
+
+    if (activeBoardId) {
+      list.push({
+        id: 'action-create-column',
+        label: 'Neue Spalte hinzufügen',
+        description: 'Eine neue Spalte zum aktuellen Projekt hinzufügen',
+        category: 'aktion',
+        action: () => setModal({ type: 'createColumn' }),
+      })
+      if (activeBoard?.columns.length) {
+        list.push({
+          id: 'action-create-card',
+          label: 'Neue Aufgabe erstellen',
+          description: 'Eine Aufgabe zur ersten Spalte hinzufügen',
+          category: 'aktion',
+          action: () => setModal({ type: 'createCard', data: { colId: activeBoard.columns[0].id } }),
+        })
+      }
+    }
+
+    list.push({
+      id: 'action-toggle-theme',
+      label: 'Farbschema wechseln',
+      description: 'Zwischen hellem und dunklem Design umschalten',
+      category: 'aktion',
+      action: toggleTheme,
+    })
+
+    list.push({
+      id: 'action-clear-filters',
+      label: 'Filter zurücksetzen',
+      description: 'Alle Such- und Filterkriterien zurücksetzen',
+      category: 'aktion',
+      action: clearFilters,
+    })
+
+    list.push({
+      id: 'action-export-data',
+      label: 'Daten exportieren',
+      description: 'Kanban-Daten als JSON-Datei herunterladen',
+      category: 'aktion',
+      action: handleExport,
+    })
+
+    // Tasks from active board
+    activeBoard?.columns.forEach((col) => {
+      col.cards.forEach((card) => {
+        list.push({
+          id: `task-${card.id}`,
+          label: `Aufgabe: ${card.title}`,
+          description: `In Spalte "${col.title}" · Priorität: ${PRIORITIES[card.priority]?.label}`,
+          category: 'task',
+          action: () => setModal({ type: 'editCard', data: { colId: col.id, card } }),
+        })
+      })
+    })
+
+    return list
+  }, [boards, activeBoardId, activeBoard, toggleTheme, clearFilters])
 
   return (
-    <div
-      className={`relative z-10 min-h-screen font-sans transition-colors duration-300 ${darkMode ? 'dark' : ''}`}
-    >
+    <div className={`relative z-10 min-h-screen font-sans transition-colors duration-300 ${darkMode ? 'dark' : ''}`}>
       <div className="fixed inset-0 -z-10 bg-background" />
       <div className={`fixed inset-0 -z-10 ${darkMode ? 'bg-mesh' : 'bg-mesh-light'}`} />
+      <div className="fixed inset-0 -z-10 bg-dot-grid opacity-50 pointer-events-none" />
 
       <div className="mx-auto flex h-screen max-w-[1800px] flex-col p-4 md:p-6 lg:p-8">
-        <header className="mb-6 flex flex-col items-start gap-4 md:flex-row md:items-center md:justify-between glass-panel rounded-2xl p-4 shadow-glass-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
-              <Layout size={20} />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-foreground font-display">
-                Kanban<span className="text-primary">Flow</span>
-              </h1>
-              <p className="text-xs font-medium text-muted-foreground">
-                {storageMode === 'api' ? 'Offline API live' : storageMode === 'local' ? 'Browser local' : 'Loading'}
-                {syncError ? ` - ${syncError}` : ''}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div
-              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${
-                mcpStatus?.connected
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                  : 'border-border bg-secondary/60 text-muted-foreground'
-              }`}
-              title={mcpStatus?.connected ? `MCP pid ${mcpStatus.pid ?? 'unknown'}` : 'Kanban MCP is not connected'}
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  mcpStatus?.connected ? 'bg-emerald-500' : 'bg-muted-foreground/50'
-                }`}
-              />
-              MCP {mcpStatus?.connected ? 'Connected' : 'Offline'}
-            </div>
-            <Button variant="ghost" onClick={() => setDarkMode((prev) => !prev)}>
-              {darkMode ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} />}
-            </Button>
-            <div className="h-8 w-px bg-border mx-1" />
-            <Button
-              variant="secondary"
-              onClick={() => {
-                const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(boards))}`
-                const anchor = document.createElement('a')
-                anchor.href = dataStr
-                anchor.download = 'kanban.json'
-                anchor.click()
-              }}
-            >
-              <Download size={16} /> Export
-            </Button>
-            <label className="cursor-pointer">
-              <input
-                type="file"
-                className="hidden"
-                accept=".json"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (!file) return
-                  const reader = new FileReader()
-                  reader.onload = (ev) => {
-                    try {
-                      const parsed = JSON.parse(String(ev.target?.result)) as Board[] | ApiState
-                      const importedBoards = Array.isArray(parsed) ? parsed : parsed.boards
-                      if (!Array.isArray(importedBoards)) throw new Error('Missing boards array')
-                      setBoards(importedBoards)
-                      setActiveBoardId(importedBoards.at(0)?.id ?? null)
-                    } catch (error) {
-                      console.error('Invalid JSON file', error)
-                    }
-                  }
-                  reader.readAsText(file)
-                }}
-              />
-              <div className="px-4 py-2 text-sm font-medium transition-all duration-200 flex items-center gap-2 select-none rounded-lg active:scale-95 bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border shadow-sm cursor-pointer">
-                <Upload size={16} /> Import
-              </div>
-            </label>
-          </div>
-        </header>
+        <Header
+          storageMode={storageMode}
+          syncError={syncError}
+          mcpStatus={mcpStatus}
+          darkMode={darkMode}
+          boards={boards}
+          onToggleTheme={toggleTheme}
+          onExport={handleExport}
+          onImport={handleImport}
+        />
 
         <div className="flex flex-1 gap-6 overflow-hidden">
-          <ProjectStatistics board={activeBoard} deletedCount={deletedCount} lastActivity={lastActivity} />
+          <Sidebar
+            board={activeBoard}
+            deletedCount={deletedCount}
+            lastActivity={lastActivity}
+            logs={logs}
+            onClearLogs={() => setLogs([])}
+          />
+
           <div className="flex flex-1 flex-col overflow-hidden">
-            <div className="mb-6 flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-              {boards.map((board) => (
-                <button
-                  key={board.id}
-                  onClick={() => setActiveBoardId(board.id)}
-                  className={`group relative flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${activeBoardId === board.id
-                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
-                    : 'bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground'
-                    }`}
-                >
-                  {board.title}
-                  {activeBoardId === board.id && (
-                    <div className="ml-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setModal({ type: 'editBoard', data: { board } })
-                        }}
-                        className="rounded-full p-0.5 text-primary-foreground/70 transition-all hover:bg-white/20 hover:text-white"
-                      >
-                        <Edit2 size={12} />
-                      </span>
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleBoardDeletion(board.id)
-                        }}
-                        className="rounded-full p-0.5 text-primary-foreground/70 transition-all hover:bg-white/20 hover:text-white"
-                      >
-                        <X size={14} />
-                      </span>
-                    </div>
-                  )}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setModal({ type: 'createBoard' })}
-                className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-background/30 px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary hover:bg-background/50 hover:text-primary"
-              >
-                <Plus size={16} /> New Board
-              </button>
-            </div>
+            <BoardTabs
+              boards={boards}
+              activeBoardId={activeBoardId}
+              setActiveBoardId={setActiveBoardId}
+              onEditBoard={(b) => setModal({ type: 'editBoard', data: { board: b } })}
+              onDeleteBoard={(boardId) => {
+                const b = boards.find((x) => x.id === boardId)
+                if (b) {
+                  setModal({
+                    type: 'deleteConfirm',
+                    data: { type: 'board', id: boardId, name: b.title },
+                  })
+                }
+              }}
+              onAddBoard={() => setModal({ type: 'createBoard' })}
+            />
 
             {activeBoard && (
-              <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border bg-secondary/30 p-3 sm:flex-row sm:items-center">
-                <div className="relative min-w-[220px] flex-1">
-                  <Search
-                    size={16}
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  />
-                  <input
-                    type="search"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search tasks..."
-                    className="h-10 w-full rounded-lg border border-input bg-background/60 pl-9 pr-3 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-2 rounded-lg border border-border bg-background/60 px-3 py-2 text-muted-foreground">
-                    <SlidersHorizontal size={15} />
-                    <span className="text-xs font-semibold">
-                      {visibleTaskCount}/{totalTaskCount}
-                    </span>
-                  </div>
-                  <select
-                    value={priorityFilter}
-                    onChange={(e) => setPriorityFilter(e.target.value as PriorityFilter)}
-                    className="h-10 rounded-lg border border-input bg-background/60 px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    aria-label="Filter by priority"
-                  >
-                    <option value="all">All priorities</option>
-                    {Object.entries(PRIORITIES).map(([key, config]) => (
-                      <option key={key} value={key}>
-                        {config.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
-                    className="h-10 rounded-lg border border-input bg-background/60 px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    aria-label="Filter by column type"
-                  >
-                    <option value="all">All columns</option>
-                    {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={sortMode}
-                    onChange={(e) => setSortMode(e.target.value as CardSortMode)}
-                    className="h-10 rounded-lg border border-input bg-background/60 px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    aria-label="Sort tasks"
-                  >
-                    {Object.entries(SORT_LABELS).map(([key, label]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  {hasActiveFilters && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearchQuery('')
-                        setPriorityFilter('all')
-                        setCategoryFilter('all')
-                        setSortMode('manual')
-                      }}
-                      className="flex h-10 items-center gap-2 rounded-lg border border-border bg-background/60 px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                    >
-                      <X size={15} /> Clear
-                    </button>
-                  )}
-                </div>
-              </div>
+              <Toolbar
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                priorityFilter={priorityFilter}
+                onPriorityChange={setPriorityFilter}
+                categoryFilter={categoryFilter}
+                onCategoryChange={setCategoryFilter}
+                sortMode={sortMode}
+                onSortChange={setSortMode}
+                visibleCount={visibleTaskCount}
+                totalCount={totalTaskCount}
+                hasActiveFilters={hasActiveFilters}
+                onClearFilters={clearFilters}
+              />
             )}
 
             {activeBoard ? (
-              <div className="flex-1 overflow-x-auto overflow-y-hidden rounded-3xl glass-panel p-6">
+              <div className="flex-1 overflow-x-auto overflow-y-hidden rounded-3xl glass-panel p-6 custom-scrollbar">
                 <div className="flex h-full min-w-max gap-6">
                   {visibleColumns.map((col) => (
-                    <div
+                    <BoardColumn
                       key={col.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, 'column', col.id)}
-                      onDragEnd={handleDragEnd}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.stopPropagation()
-                        handleDropColumn(col.id)
+                      column={col}
+                      hasActiveFilters={hasActiveFilters}
+                      foldedTaskIds={foldedTaskIds}
+                      onFoldToggle={toggleFold}
+                      onEditCard={(columnId, card) => setModal({ type: 'editCard', data: { colId: columnId, card } })}
+                      onCopyCard={(columnId, cardId) => {
+                        copyCard(activeBoard.id, columnId, cardId)
+                        addLog('info', 'Aufgabe kopiert.')
                       }}
-                      className="group flex h-full w-80 flex-col rounded-2xl bg-secondary/30 ring-1 ring-border"
-                    >
-                      <div className="flex cursor-grab items-center justify-between p-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`h-3 w-3 rounded-full ${col.color}`} />
-                          <span className="font-bold text-foreground">
-                            {col.title}
-                          </span>
-                          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-background/50 px-1.5 text-xs font-medium text-muted-foreground">
-                            {hasActiveFilters && col.cards.length !== col.totalCards
-                              ? `${col.cards.length}/${col.totalCards}`
-                              : col.totalCards}
-                          </span>
-                        </div>
-                        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setModal({ type: 'editColumn', data: { boardId: activeBoardId, col: col.sourceColumn } })
-                            }
-                            className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"
-                          >
-                            <MoreHorizontal size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!window.confirm('Delete?')) return
-                              setBoards((prev) => {
-                                const next = deepClone(prev)
-                                const board = next.find((b) => b.id === activeBoardId)
-                                if (!board) return prev
-                                board.columns = board.columns.filter((c) => c.id !== col.id)
-                                return next
-                              })
-                            }}
-                            className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div
-                        className="custom-scrollbar flex-1 space-y-3 overflow-y-auto p-3"
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={() => handleDropCard(col.id)}
-                      >
-                        {col.cards.map(({ card, originalIndex }) => {
-                          const subtaskCount = card.subtasks?.length ?? 0
-                          const completedSubtaskCount = card.subtasks?.filter((task) => task.completed).length ?? 0
-                          const canFold = Boolean(card.description) || subtaskCount > 0
-                          const isFolded = foldedTaskIds.has(card.id)
-
-                          return (
-                            <div
-                              key={card.id}
-                              draggable
-                              onDragStart={(e) => {
-                                e.stopPropagation()
-                                handleDragStart(e, 'card', card.id, col.id)
-                              }}
-                              onDragEnd={handleDragEnd}
-                              onDrop={(e) => {
-                                e.stopPropagation()
-                                handleDropCard(col.id, originalIndex)
-                              }}
-                              className="group/card relative cursor-grab rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:shadow-md hover:ring-2 hover:ring-primary/20"
-                            >
-                              <div className="mb-3 flex items-start gap-3">
-                                <span
-                                  className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${PRIORITIES[card.priority]?.color}`}
-                                >
-                                  {PRIORITIES[card.priority]?.icon}
-                                  {PRIORITIES[card.priority]?.label}
-                                </span>
-                                <div className="ml-auto flex shrink-0 items-center gap-1">
-                                  {canFold && (
-                                    <button
-                                      type="button"
-                                      title={isFolded ? 'Expand task' : 'Fold task'}
-                                      aria-label={isFolded ? 'Expand task' : 'Fold task'}
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleTaskFoldToggle(card.id)
-                                      }}
-                                      className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                                    >
-                                      {isFolded ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                                    </button>
-                                  )}
-                                  <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        setModal({
-                                          type: 'editCard',
-                                          data: { boardId: activeBoardId, colId: col.id, card },
-                                        })
-                                      }}
-                                      className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                                    >
-                                      <Edit2 size={14} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      title="Copy task"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleCardCopy(col.id, card.id)
-                                      }}
-                                      className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                                    >
-                                      <Copy size={14} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleCardDeletion(col.id, card.id)
-                                      }}
-                                      className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                              <h4 className={`mb-2 font-semibold text-card-foreground ${isFolded ? 'line-clamp-2' : ''}`}>
-                                {card.title}
-                              </h4>
-                              {!isFolded && card.description && (
-                                <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
-                                  {card.description}
-                                </p>
-                              )}
-                              {!isFolded && card.subtasks && card.subtasks.length > 0 && (
-                                <div className="mt-3 space-y-1">
-                                  {card.subtasks.map((subtask) => (
-                                    <div
-                                      key={subtask.id}
-                                      className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleSubtaskToggle(col.id, card.id, subtask.id)
-                                      }}
-                                    >
-                                      <div className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors ${subtask.completed ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground'}`}>
-                                        {subtask.completed && <CheckCircle2 size={10} />}
-                                      </div>
-                                      <span className={subtask.completed ? 'line-through opacity-50' : ''}>
-                                        {subtask.title}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
-                                <div className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
-                                  <span>ID: {card.id.slice(0, 4)}</span>
-                                  {subtaskCount > 0 && (
-                                    <div className="flex items-center gap-1" title="Sub-tasks">
-                                      <CheckCircle2 size={12} />
-                                      <span>
-                                        {completedSubtaskCount}/{subtaskCount}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {isFolded && canFold && (
-                                    <span className="rounded-full bg-secondary px-1.5 py-0.5">
-                                      folded
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
+                      onDeleteCard={(columnId, cardId) => {
+                        const c = activeBoard.columns.find((x) => x.id === columnId)
+                        const card = c?.cards.find((x) => x.id === cardId)
+                        if (card) {
+                          setModal({
+                            type: 'deleteConfirm',
+                            data: { type: 'card', id: cardId, name: card.title, parentId: columnId },
+                          })
+                        }
+                      }}
+                      onSubtaskToggle={(columnId, cardId, subtaskId) => {
+                        toggleSubtask(activeBoard.id, columnId, cardId, subtaskId)
+                        setLastActivity(Date.now())
+                      }}
+                      onAddCard={(columnId) => setModal({ type: 'createCard', data: { colId: columnId } })}
+                      onEditColumn={(column) => setModal({ type: 'editColumn', data: { col: column } })}
+                      onDeleteColumn={(columnId) => {
+                        const c = activeBoard.columns.find((x) => x.id === columnId)
+                        if (c) {
+                          setModal({
+                            type: 'deleteConfirm',
+                            data: { type: 'column', id: columnId, name: c.title },
+                          })
+                        }
+                      }}
+                      handleDragStart={handleDragStart}
+                      handleDragEnd={handleDragEnd}
+                      handleDropCard={(targetColId, targetIndex) => {
+                        if (dragState.type === 'card' && dragState.sourceId && dragState.id) {
+                          dropCard(activeBoard.id, dragState.sourceId, targetColId, dragState.id, targetIndex)
+                          setLastActivity(Date.now())
+                          addLog(
+                            'info',
+                            `Aufgabe verschoben nach ${activeBoard.columns.find((c) => c.id === targetColId)?.title}`,
                           )
-                        })}
-                        {col.cards.length === 0 && (
-                          <div className="flex h-32 flex-col items-center justify-center rounded-xl border-2 border-dashed border-border text-sm font-medium text-muted-foreground">
-                            <div className="mb-2 rounded-full bg-secondary p-3">
-                              <Calendar size={20} />
-                            </div>
-                            <span>{hasActiveFilters && col.totalCards > 0 ? 'No matching tasks' : 'No tasks yet'}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="p-3 pt-0">
-                        <button
-                          type="button"
-                          onClick={() => setModal({ type: 'createCard', data: { colId: col.id } })}
-                          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
-                        >
-                          <Plus size={16} /> Add Task
-                        </button>
-                      </div>
-                    </div>
+                        }
+                      }}
+                      handleDropColumn={(targetColId) => {
+                        if (dragState.type === 'column' && dragState.id) {
+                          dropColumn(activeBoard.id, dragState.id, targetColId)
+                          setLastActivity(Date.now())
+                        }
+                      }}
+                    />
                   ))}
 
                   <div className="pt-4">
@@ -1407,6 +401,7 @@ const App = () => {
                       type="button"
                       onClick={() => setModal({ type: 'createColumn' })}
                       className="flex h-12 w-12 items-center justify-center rounded-xl border-2 border-dashed border-border bg-secondary/30 text-muted-foreground transition-all hover:border-primary hover:bg-background hover:text-primary hover:shadow-lg"
+                      title="Spalte hinzufügen"
                     >
                       <Plus size={24} />
                     </button>
@@ -1418,14 +413,12 @@ const App = () => {
                 <div className="mb-6 rounded-full bg-secondary p-8">
                   <Layout size={48} className="text-primary/50" />
                 </div>
-                <h2 className="mb-2 text-xl font-bold text-foreground">
-                  No Board Selected
-                </h2>
+                <h2 className="mb-2 text-xl font-bold text-foreground">Kein Projekt ausgewählt</h2>
                 <p className="mb-6 max-w-xs text-center text-sm">
-                  Create a new board to get started with your projects.
+                  Erstelle ein neues Projekt, um mit der Arbeit an deinen Aufgaben zu beginnen.
                 </p>
                 <Button onClick={() => setModal({ type: 'createBoard' })}>
-                  <Plus size={16} /> Create New Board
+                  <Plus size={16} /> Projekt erstellen
                 </Button>
               </div>
             )}
@@ -1433,27 +426,24 @@ const App = () => {
         </div>
       </div>
 
+      {/* Board Modals */}
       <BoardForm
         isOpen={modal.type === 'createBoard' || modal.type === 'editBoard'}
         mode={modal.type === 'createBoard' ? 'create' : 'edit'}
         initialData={modal.data?.board as Board | undefined}
         onClose={() => setModal({ type: null })}
-        darkMode={darkMode}
         onSubmit={({ title }) => {
           if (!title.trim()) return
-          const currentModal = modal
-          setBoards((prev) => {
-            if (currentModal.type === 'createBoard') {
-              const newBoard: Board = { id: generateId(), title, createdAt: Date.now(), columns: [] }
-              setActiveBoardId(newBoard.id)
-              return [...prev, newBoard]
-            } else if (currentModal.type === 'editBoard') {
-              const modalBoard = currentModal.data?.board as Board | undefined
-              return prev.map(b => b.id === modalBoard?.id ? { ...b, title } : b)
-            }
-            return prev
-          })
+          if (modal.type === 'createBoard') {
+            createBoard(title)
+            addLog('success', `Projekt "${title}" erstellt.`)
+          } else if (modal.type === 'editBoard' && modal.data?.board) {
+            const boardId = (modal.data.board as Board).id
+            updateBoard(boardId, title)
+            addLog('info', `Projekt in "${title}" umbenannt.`)
+          }
           setModal({ type: null })
+          setLastActivity(Date.now())
         }}
       />
 
@@ -1462,30 +452,18 @@ const App = () => {
         mode={modal.type === 'createColumn' ? 'create' : 'edit'}
         initialData={modal.data?.col as Column | undefined}
         onClose={() => setModal({ type: null })}
-        darkMode={darkMode}
         onSubmit={({ title, color, category }) => {
           if (!activeBoardId || !title.trim()) return
-          const currentModal = modal
-          setBoards((prev) => {
-            const next = deepClone(prev)
-            const board = next.find((b) => b.id === activeBoardId)
-            if (!board) return prev
-            if (currentModal.type === 'createColumn') {
-              board.columns.push({ id: generateId(), title, color, category, cards: [] })
-            } else if (currentModal.type === 'editColumn') {
-              const modalCol = currentModal.data?.col as Column | undefined
-              const target = board.columns.find(
-                (c) => c.id === modalCol?.id,
-              )
-              if (target) {
-                target.title = title
-                target.color = color
-                target.category = category
-              }
-            }
-            return next
-          })
+          if (modal.type === 'createColumn') {
+            createColumn(activeBoardId, title, color, category)
+            addLog('success', `Spalte "${title}" erstellt.`)
+          } else if (modal.type === 'editColumn' && modal.data?.col) {
+            const colId = (modal.data.col as Column).id
+            updateColumn(activeBoardId, colId, title, color, category)
+            addLog('info', `Spalte "${title}" aktualisiert.`)
+          }
           setModal({ type: null })
+          setLastActivity(Date.now())
         }}
       />
 
@@ -1494,356 +472,48 @@ const App = () => {
         mode={modal.type === 'createCard' ? 'create' : 'edit'}
         initialData={modal.data?.card as Card | undefined}
         onClose={() => setModal({ type: null })}
-        darkMode={darkMode}
         onSubmit={({ title, description, priority, subtasks }) => {
           if (!activeBoardId || !title.trim()) return
-          const currentModal = modal
-          const colId = currentModal.data?.colId as string | undefined
+          const colId = modal.data?.colId as string | undefined
           if (!colId) return
-          setBoards((prev) => {
-            const next = deepClone(prev)
-            const board = next.find((b) => b.id === activeBoardId)
-            if (!board) return prev
-            const col = board.columns.find((c) => c.id === colId)
-            if (!col) return prev
-            if (currentModal.type === 'createCard') {
-              col.cards.push({ id: generateId(), title, description, priority, subtasks, createdAt: Date.now() })
-            } else if (currentModal.type === 'editCard') {
-              const modalCard = currentModal.data?.card as Card | undefined
-              const target = col.cards.find(
-                (c) => c.id === modalCard?.id,
-              )
-              if (target) {
-                target.title = title
-                target.description = description
-                target.priority = priority
-                target.subtasks = subtasks
-              }
-            }
-            return next
-          })
-          setLastActivity(Date.now())
+          if (modal.type === 'createCard') {
+            createCard(activeBoardId, colId, { title, description, priority, subtasks })
+            addLog('success', `Aufgabe "${title}" erstellt.`)
+          } else if (modal.type === 'editCard' && modal.data?.card) {
+            const cardId = (modal.data.card as Card).id
+            updateCard(activeBoardId, colId, cardId, { title, description, priority, subtasks })
+            addLog('info', `Aufgabe "${title}" aktualisiert.`)
+          }
           setModal({ type: null })
+          setLastActivity(Date.now())
         }}
       />
 
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirm
+        isOpen={modal.type === 'deleteConfirm'}
+        onClose={() => setModal({ type: null })}
+        onConfirm={handleDeleteConfirm}
+        type={(modal.data?.type as 'board' | 'column' | 'card') ?? 'card'}
+        itemName={modal.data?.name as string ?? ''}
+      />
+
+      {/* Command Palette */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        actions={commandPaletteActions}
+      />
+
+      {/* Undo Toast */}
       {deletedTaskUndo && (
-        <div className="fixed bottom-6 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-3 rounded-2xl border border-border bg-card p-3 text-card-foreground shadow-2xl">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">Task deleted</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {deletedTaskUndo.card.title}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleUndoTaskDeletion}
-            className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Undo
-          </button>
-          <button
-            type="button"
-            onClick={() => setDeletedTaskUndo(null)}
-            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            aria-label="Dismiss undo"
-          >
-            <X size={16} />
-          </button>
-        </div>
+        <UndoToast
+          deletedTask={deletedTaskUndo}
+          onUndo={handleUndoTaskDeletion}
+          onDismiss={() => setDeletedTaskUndo(null)}
+        />
       )}
     </div>
-  )
-}
-
-type BoardFormProps = {
-  isOpen: boolean
-  onClose: () => void
-  onSubmit: (data: { title: string }) => void
-  mode: 'create' | 'edit'
-  initialData?: Board
-  darkMode: boolean
-}
-
-const BoardForm = ({ isOpen, onClose, onSubmit, mode, initialData, darkMode }: BoardFormProps) => {
-  const [title, setTitle] = useState('')
-
-  useEffect(() => {
-    if (isOpen) {
-      setTitle(initialData?.title ?? '')
-    }
-  }, [isOpen, initialData])
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault()
-    onSubmit({ title })
-  }
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title={mode === 'edit' ? 'Edit Project' : 'New Project'} darkMode={darkMode}>
-      <form onSubmit={handleSubmit}>
-        <InputGroup label="Project Name" value={title} onChange={setTitle} placeholder="e.g. Website Redesign" />
-        <div className="mt-6 flex justify-end gap-3">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit">{mode === 'edit' ? 'Save Changes' : 'Create Project'}</Button>
-        </div>
-      </form>
-    </Modal>
-  )
-}
-
-type ColumnFormProps = {
-  isOpen: boolean
-  onClose: () => void
-  onSubmit: (data: { title: string; color: string; category: 'todo' | 'doing' | 'done' | 'bugs' | 'none' }) => void
-  mode: 'create' | 'edit'
-  initialData?: Column
-  darkMode: boolean
-}
-
-const ColumnForm = ({
-  isOpen,
-  onClose,
-  onSubmit,
-  mode,
-  initialData,
-  darkMode,
-}: ColumnFormProps) => {
-  const [title, setTitle] = useState('')
-  const [color, setColor] = useState('bg-slate-500')
-  const [category, setCategory] = useState<'todo' | 'doing' | 'done' | 'bugs' | 'none'>('doing')
-
-  useEffect(() => {
-    if (isOpen) {
-      setTitle(initialData?.title ?? '')
-      setColor(initialData?.color ?? 'bg-slate-500')
-      setCategory(initialData?.category ?? 'doing')
-    }
-  }, [isOpen, initialData])
-
-  const colors = [
-    'bg-slate-500',
-    'bg-red-500',
-    'bg-orange-500',
-    'bg-amber-500',
-    'bg-emerald-500',
-    'bg-teal-500',
-    'bg-cyan-500',
-    'bg-blue-500',
-    'bg-indigo-500',
-    'bg-violet-500',
-    'bg-fuchsia-500',
-    'bg-rose-500',
-  ]
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault()
-    onSubmit({ title, color, category })
-  }
-
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={mode === 'edit' ? 'Edit Column' : 'New Column'}
-      darkMode={darkMode}
-    >
-      <form onSubmit={handleSubmit}>
-        <InputGroup label="Column Title" value={title} onChange={setTitle} placeholder="e.g. In Review" />
-
-        <div className="mb-4">
-          <label className="mb-2 block text-sm font-medium text-muted-foreground">
-            Column Type
-          </label>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-            {(['todo', 'doing', 'done', 'bugs', 'none'] as const).map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setCategory(cat)}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium capitalize transition-all ${category === cat
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border bg-background text-muted-foreground hover:bg-accent'
-                  }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        </div>
-
-
-        <div className="mb-6">
-          <label className="mb-2 block text-sm font-medium text-muted-foreground">
-            Color Tag
-          </label>
-          <div className="flex flex-wrap gap-3">
-            {colors.map((val) => (
-              <button
-                key={val}
-                type="button"
-                onClick={() => setColor(val)}
-                className={`h-8 w-8 rounded-full transition-all ${val} ${color === val ? 'ring-2 ring-slate-400 ring-offset-2 dark:ring-slate-500 dark:ring-offset-slate-800' : 'hover:scale-110'}`}
-              />
-            ))}
-          </div>
-        </div>
-        <div className="flex justify-end gap-3">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit">Save Changes</Button>
-        </div>
-      </form>
-    </Modal>
-  )
-}
-
-type CardFormProps = {
-  isOpen: boolean
-  onClose: () => void
-  onSubmit: (data: { title: string; description: string; priority: PriorityKey; subtasks: Subtask[] }) => void
-  mode: 'create' | 'edit'
-  initialData?: Card
-  darkMode: boolean
-}
-
-const CardForm = ({
-  isOpen,
-  onClose,
-  onSubmit,
-  mode,
-  initialData,
-  darkMode,
-}: CardFormProps) => {
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [priority, setPriority] = useState<PriorityKey>('medium')
-  const [subtasks, setSubtasks] = useState<Subtask[]>([])
-  const [newSubtask, setNewSubtask] = useState('')
-
-  useEffect(() => {
-    if (isOpen) {
-      setTitle(initialData?.title ?? '')
-      setDescription(initialData?.description ?? '')
-      setPriority(initialData?.priority ?? 'medium')
-      setSubtasks(initialData?.subtasks ?? [])
-    }
-  }, [isOpen, initialData])
-
-  const handleAddSubtask = (e: React.KeyboardEvent<HTMLInputElement> | React.MouseEvent) => {
-    if (e.type === 'keydown' && (e as React.KeyboardEvent).key !== 'Enter') return
-    e.preventDefault()
-    if (!newSubtask.trim()) return
-    setSubtasks(prev => [...prev, { id: generateId(), title: newSubtask.trim(), completed: false }])
-    setNewSubtask('')
-  }
-
-  const toggleSubtask = (id: string) => {
-    setSubtasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t))
-  }
-
-  const deleteSubtask = (id: string) => {
-    setSubtasks(prev => prev.filter(t => t.id !== id))
-  }
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault()
-    onSubmit({ title, description, priority, subtasks })
-  }
-
-  return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={mode === 'edit' ? 'Edit Task' : 'New Task'}
-      darkMode={darkMode}
-    >
-      <form onSubmit={handleSubmit}>
-        <InputGroup label="Task Title" value={title} onChange={setTitle} placeholder="What needs to be done?" />
-        <div className="mb-4">
-          <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
-            Priority Level
-          </label>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {Object.entries(PRIORITIES).map(([key, cfg]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setPriority(key as PriorityKey)}
-                className={`flex flex-col items-center justify-center gap-1 rounded-lg border p-2 text-xs font-medium transition-all ${priority === key
-                  ? `${cfg.color} border-transparent ring-1 ring-current`
-                  : 'border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
-                  }`}
-              >
-                {cfg.icon}
-                {cfg.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <InputGroup
-          label="Description"
-          value={description}
-          onChange={setDescription}
-          type="textarea"
-          placeholder="Add details, acceptance criteria, etc."
-        />
-
-        <div className="mb-4">
-          <label className="mb-2 block text-sm font-medium text-slate-600 dark:text-slate-300">
-            Sub-tasks
-          </label>
-          <div className="space-y-2">
-            {subtasks.map(task => (
-              <div key={task.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800">
-                <button
-                  type="button"
-                  onClick={() => toggleSubtask(task.id)}
-                  className={`flex h-5 w-5 items-center justify-center rounded border transition-colors ${task.completed
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-slate-300 bg-white hover:border-primary dark:border-slate-600 dark:bg-slate-700'
-                    }`}
-                >
-                  {task.completed && <CheckCircle2 size={12} />}
-                </button>
-                <span className={`flex-1 text-sm ${task.completed ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>
-                  {task.title}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => deleteSubtask(task.id)}
-                  className="text-slate-400 hover:text-rose-500"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ))}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newSubtask}
-                onChange={(e) => setNewSubtask(e.target.value)}
-                onKeyDown={handleAddSubtask}
-                placeholder="Add a sub-task..."
-                className="flex-1 rounded-lg border border-slate-200 bg-white p-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-              />
-              <Button type="button" onClick={handleAddSubtask} variant="secondary" className="px-3">
-                <Plus size={16} />
-              </Button>
-            </div>
-          </div>
-        </div>
-        <div className="mt-6 flex justify-end gap-3">
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit">Save Task</Button>
-        </div>
-      </form>
-    </Modal>
   )
 }
 
