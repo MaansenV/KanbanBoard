@@ -197,35 +197,6 @@ export const useBoards = (initialBoards: Board[] = []) => {
     })
   }
 
-  const copyCard = (boardId: string, columnId: string, cardId: string) => {
-    setBoards((prev) => {
-      const next = deepClone(prev)
-      const board = next.find((b) => b.id === boardId)
-      if (!board) return prev
-      const col = board.columns.find((c) => c.id === columnId)
-      if (!col) return prev
-      const cardIndex = col.cards.findIndex((c) => c.id === cardId)
-      if (cardIndex === -1) return prev
-
-      const sourceCard = col.cards[cardIndex]
-      const copiedCard: Card = {
-        ...sourceCard,
-        id: generateId(),
-        title: `${sourceCard.title} (Copy)`,
-        createdAt: Date.now(),
-        subtasks: sourceCard.subtasks?.map((subtask) => ({
-          ...subtask,
-          id: generateId(),
-        })),
-      }
-      if (copiedCard.completedAt && !sourceCard.completedAt) {
-        delete copiedCard.completedAt
-      }
-      col.cards.splice(cardIndex + 1, 0, copiedCard)
-      return next
-    })
-  }
-
   const dropCard = (
     boardId: string,
     sourceColId: string,
@@ -370,7 +341,6 @@ export const useBoards = (initialBoards: Board[] = []) => {
     updateCard,
     deleteCard,
     undoCardDeletion,
-    copyCard,
     dropCard,
     createSubtask,
     updateSubtask,

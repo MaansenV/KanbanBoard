@@ -68,23 +68,23 @@ export const Toolbar = ({
   }))
 
   return (
-    <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border/50 bg-secondary/20 p-3 sm:flex-row sm:items-center">
+    <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border/50 bg-secondary/20 p-3 sm:flex-row sm:items-center transition-all duration-700">
       <div className="relative min-w-[220px] flex-1">
         <Search
           size={16}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors duration-700"
         />
         <input
           type="search"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Aufgaben suchen..."
-          className="h-10 w-full rounded-lg border border-input bg-background/60 pl-9 pr-3 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+          className="h-10 w-full rounded-lg border border-input bg-background/60 pl-9 pr-3 text-sm text-foreground outline-none transition-all duration-700 placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
         />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex h-10 items-center gap-2 rounded-lg border border-border bg-background/60 px-3 text-muted-foreground">
+        <div className="flex h-10 items-center gap-2 rounded-lg border border-border bg-background/60 px-3 text-muted-foreground transition-all duration-700">
           <SlidersHorizontal size={15} />
           <span className="text-xs font-semibold font-mono">
             {visibleCount}/{totalCount}
@@ -119,7 +119,7 @@ export const Toolbar = ({
           <button
             type="button"
             onClick={onClearFilters}
-            className="flex h-10 items-center gap-2 rounded-lg border border-border bg-background/60 px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="flex h-10 items-center gap-2 rounded-lg border border-border bg-background/60 px-3 text-sm font-medium text-muted-foreground transition-colors duration-700 hover:bg-accent hover:text-foreground"
           >
             <X size={15} /> Zurücksetzen
           </button>

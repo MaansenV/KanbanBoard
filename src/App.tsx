@@ -78,7 +78,6 @@ const App = () => {
     updateCard,
     deleteCard,
     undoCardDeletion,
-    copyCard,
     dropCard,
     toggleSubtask,
   } = useBoards([])
@@ -272,12 +271,20 @@ const App = () => {
 
     return list
   }, [boards, activeBoardId, activeBoard, toggleTheme, clearFilters])
-
   return (
-    <div className={`relative z-10 min-h-screen font-sans transition-colors duration-300 ${darkMode ? 'dark' : ''}`}>
-      <div className="fixed inset-0 -z-10 bg-background" />
-      <div className={`fixed inset-0 -z-10 ${darkMode ? 'bg-mesh' : 'bg-mesh-light'}`} />
-      <div className="fixed inset-0 -z-10 bg-dot-grid opacity-50 pointer-events-none" />
+    <div className={`relative z-10 min-h-screen font-sans transition-colors duration-700 ${darkMode ? 'dark' : ''}`}>
+      <div className="fixed inset-0 -z-10 bg-background transition-colors duration-700" />
+      <div
+        className={`fixed inset-0 -z-10 bg-mesh-light transition-opacity duration-700 ${
+          darkMode ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}
+      />
+      <div
+        className={`fixed inset-0 -z-10 bg-mesh transition-opacity duration-700 ${
+          darkMode ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      />
+      <div className="fixed inset-0 -z-10 bg-dot-grid opacity-50 pointer-events-none transition-opacity duration-700" />
 
       <div className="mx-auto flex h-screen max-w-[1800px] flex-col p-4 md:p-6 lg:p-8">
         <Header
@@ -346,9 +353,8 @@ const App = () => {
                       foldedTaskIds={foldedTaskIds}
                       onFoldToggle={toggleFold}
                       onEditCard={(columnId, card) => setModal({ type: 'editCard', data: { colId: columnId, card } })}
-                      onCopyCard={(columnId, cardId) => {
-                        copyCard(activeBoard.id, columnId, cardId)
-                        addLog('info', 'Aufgabe kopiert.')
+                      onCopyCard={() => {
+                        addLog('success', 'Aufgabe in die Zwischenablage kopiert.')
                       }}
                       onDeleteCard={(columnId, cardId) => {
                         const c = activeBoard.columns.find((x) => x.id === columnId)

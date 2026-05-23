@@ -1,5 +1,5 @@
-import React from 'react'
-import { Edit2, Copy, Trash2, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react'
+import React, { useState } from 'react'
+import { Edit2, Copy, Trash2, ChevronDown, ChevronRight, CheckCircle2, Check } from 'lucide-react'
 import type { Card as CardType } from '../../types'
 import { PRIORITIES } from '../../types'
 import { SubtaskList } from './SubtaskList'
@@ -7,6 +7,7 @@ import { SubtaskList } from './SubtaskList'
 type CardProps = {
   card: CardType
   columnId: string
+  columnTitle: string
   originalIndex: number
   isFolded: boolean
   onFoldToggle: (cardId: string) => void
@@ -27,6 +28,7 @@ type CardProps = {
 export const Card = ({
   card,
   columnId,
+  columnTitle,
   originalIndex,
   isFolded,
   onFoldToggle,
@@ -38,11 +40,37 @@ export const Card = ({
   handleDragEnd,
   handleDropCard,
 }: CardProps) => {
+  const [copied, setCopied] = useState(false)
   const priorityInfo = PRIORITIES[card.priority]
   const subtasks = card.subtasks || []
   const subtaskCount = subtasks.length
   const completedSubtaskCount = subtasks.filter((s) => s.completed).length
   const progressPercent = subtaskCount > 0 ? Math.round((completedSubtaskCount / subtaskCount) * 100) : 0
+
+  const handleCopyToClipboard = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      const priorityLabel = priorityInfo?.label || card.priority
+      const subtasksText = subtasks.length > 0
+        ? '\n**Unteraufgaben:**\n' + subtasks.map((s) => `- [${s.completed ? 'x' : ' '}] ${s.title}`).join('\n')
+        : ''
+
+      const textToCopy = `**Titel:** ${card.title}
+**Priorität:** ${priorityLabel}
+**Status:** ${columnTitle}
+
+**Beschreibung:**
+${card.description || 'Keine Beschreibung vorhanden.'}
+${subtasksText}`
+
+      await navigator.clipboard.writeText(textToCopy)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+      onCopyCard(columnId, card.id)
+    } catch (err) {
+      console.error('Failed to copy: ', err)
+    }
+  }
 
   return (
     <div
@@ -59,7 +87,7 @@ export const Card = ({
         e.stopPropagation()
         handleDropCard(columnId, originalIndex)
       }}
-      className="group/card relative overflow-hidden cursor-grab rounded-xl border border-border/60 bg-card/60 backdrop-blur-md p-4 pl-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-card/90 hover:shadow-md hover:shadow-primary/5 select-none text-left"
+      className="group/card relative overflow-hidden cursor-grab rounded-xl border border-border/60 bg-card/60 backdrop-blur-md p-4 pl-5 shadow-sm transition-all duration-700 hover:duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-card/90 hover:shadow-md hover:shadow-primary/5 select-none text-left"
     >
       {/* Left Priority Accent Stripe */}
       <div
@@ -112,14 +140,13 @@ export const Card = ({
             </button>
             <button
               type="button"
-              title="Aufgabe kopieren"
-              onClick={(e) => {
-                e.stopPropagation()
-                onCopyCard(columnId, card.id)
-              }}
-              className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+              title={copied ? 'Kopiert!' : 'Aufgabe in Zwischenablage kopieren (Markdown)'}
+              onClick={handleCopyToClipboard}
+              className={`inline-flex rounded p-1 transition-colors ${
+                copied ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
+              }`}
             >
-              <Copy size={14} />
+              {copied ? <Check size={14} /> : <Copy size={14} />}
             </button>
             <button
               type="button"

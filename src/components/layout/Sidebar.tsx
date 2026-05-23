@@ -26,7 +26,7 @@ export const Sidebar = ({
 
   return (
     <div
-      className={`relative h-full flex flex-col transition-all duration-300 ease-in-out border-r border-border bg-background/40 backdrop-blur-md ${
+      className={`relative h-full flex flex-col transition-all duration-700 ease-in-out border-r border-border bg-background/40 backdrop-blur-md ${
         isCollapsed ? 'w-16' : 'w-80'
       } ${className}`}
     >

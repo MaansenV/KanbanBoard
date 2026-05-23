@@ -100,7 +100,7 @@ export const CustomDropdown = ({
       <button
         type="button"
         onClick={handleToggle}
-        className={`flex h-10 w-full items-center justify-between gap-3 rounded-lg border border-input bg-background/60 px-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 ${
+        className={`flex h-10 w-full items-center justify-between gap-3 rounded-lg border border-input bg-background/60 px-3 text-sm text-foreground outline-none transition-all duration-700 focus:border-primary focus:ring-2 focus:ring-primary/20 ${
           isOpen ? 'border-primary ring-2 ring-primary/20' : ''
         }`}
         aria-haspopup="listbox"

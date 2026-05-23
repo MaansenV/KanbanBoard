@@ -53,7 +53,7 @@ export const Column = ({
         e.stopPropagation()
         handleDropColumn(column.id)
       }}
-      className="group flex h-full w-80 flex-col rounded-2xl bg-secondary/30 ring-1 ring-border text-left select-none"
+      className="group flex h-full w-80 flex-col rounded-2xl bg-secondary/30 ring-1 ring-border text-left select-none transition-all duration-700"
     >
       {/* Column Header */}
       <div className="flex cursor-grab items-center justify-between p-4">
@@ -104,6 +104,7 @@ export const Column = ({
             key={card.id}
             card={card}
             columnId={column.id}
+            columnTitle={column.title}
             originalIndex={originalIndex}
             isFolded={foldedTaskIds.has(card.id)}
             onFoldToggle={onFoldToggle}

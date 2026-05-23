@@ -26,7 +26,7 @@ export const BoardTabs = ({
           <div
             key={board.id}
             onClick={() => setActiveBoardId(board.id)}
-            className={`group relative flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 cursor-pointer overflow-hidden ${
+            className={`group relative flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-700 hover:duration-150 cursor-pointer overflow-hidden ${
               isActive
                 ? 'bg-card text-foreground border border-primary/30 shadow-[0_4px_20px_rgba(0,0,0,0.15)] glow-shadow-primary'
                 : 'bg-secondary/40 text-muted-foreground hover:bg-secondary/70 hover:text-foreground border border-border/30'
