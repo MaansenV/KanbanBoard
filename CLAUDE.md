@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A single-page Kanban Board application built with React, TypeScript, Vite, and Tailwind CSS. The entire application is contained in a single component (`src/App.tsx`) for simplicity. Features include drag-and-drop task management, multiple boards, priority levels, dark mode, and animated ASCII background.
+A single-page Kanban Board application built with React, TypeScript, Vite, and Tailwind CSS. The application is modularly structured with components and custom hooks for cleaner state management. Features include drag-and-drop task management, multiple boards, priority levels, dark mode, and animated ASCII background.
 
 ## Development Commands
 
@@ -36,27 +36,24 @@ npm run deploy
 
 ## Architecture & Key Concepts
 
-### Single Component Architecture
-- **Everything is in `src/App.tsx`**: All components (Modal, Button, InputGroup, Forms), state management, and logic are contained in a single 1000+ line file
-- **No routing**: Board switching handled via state
-- **Local storage persistence**: Boards auto-save to localStorage on every change
-- **Offline API persistence**: In `npm run dev:offline`, the app syncs to `data/kanban.json` through `server/offline-server.mjs`
-- **MCP access**: `server/mcp-http-server.mjs` exposes read/write tools for Codex over HTTP at `http://127.0.0.1:4175/mcp`; `server/mcp-server.mjs` keeps the stdio transport for clients that launch commands
+### Modular Architecture
+- **App entrypoint in `src/App.tsx`**: Renders the core layout, stats, activity log, and initializes the board hooks and modals.
+- **Component Splitting**: Sub-components are stored in `src/components/`, e.g., the board logic (`Card.tsx`, `Column.tsx`, `BoardTabs.tsx`, `SubtaskList.tsx`), layouts, stats, and modals.
+- **State Hook**: Board state and CRUD operations are managed in `src/hooks/useBoards.ts`.
+- **No routing**: Board switching handled via React state.
+- **Local storage persistence**: Boards auto-save to localStorage on every change.
+- **Offline API persistence**: In `npm run dev:offline`, the app syncs to `data/kanban.json` through `server/offline-server.mjs`.
+- **MCP access**: `server/mcp-http-server.mjs` exposes read/write tools for Codex over HTTP at `http://127.0.0.1:4175/mcp`; `server/mcp-server.mjs` keeps the stdio transport for clients that launch commands.
 
-### Core Data Types (lines 46-78 in App.tsx)
-- `Card`: Individual task with title, description, and priority
-- `Column`: Container for cards with color coding
-- `Board`: Container for columns
-- `ModalState` & `DragState`: UI state management
-
-### State Management Approach
-- Uses React hooks (useState, useEffect, useMemo)
-- Deep cloning for immutable updates via `deepClone` utility
-- Drag-and-drop state tracked separately from data state
+### Core Data Types (defined in `src/types/index.ts`)
+- `Card`: Individual task with title, description, priority, subtasks list, etc.
+- `Column`: Container for cards with color coding.
+- `Board`: Container for columns.
+- `ModalState` & `DragState`: UI state management.
 
 ### Styling System
 - Tailwind CSS with dark mode support (`dark:` prefixes)
-- ASCII art background rendered on canvas (lines 95-201)
+- ASCII art background rendered on canvas
 - Color scheme transitions smoothly between light/dark modes
 - Priority levels have predefined color schemes (PRIORITIES constant)
 
@@ -85,7 +82,7 @@ Based on `.cursor/plans/smooth-e73d41d4.plan.md`, the project is undergoing UI p
 
 ## Important Notes
 
-- **No component splitting**: Intentionally kept as single file for simplicity
+- **Modular component structure**: Clean separation of hooks, types, and UI components.
 - **No external state management**: No Redux, Zustand, etc.
 - **Browser-only features**: Uses localStorage, drag-and-drop API
 - **TypeScript strict mode**: Enabled with strict linting rules
