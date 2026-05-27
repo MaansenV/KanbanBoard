@@ -46,7 +46,19 @@ const processBuffer = () => {
     buffer = buffer.subarray(end)
     messageQueue = messageQueue
       .then(async () => {
-        const response = await handleJsonRpcMessage(JSON.parse(payload))
+        let message
+        try {
+          message = JSON.parse(payload)
+        } catch (parseError) {
+          send({
+            jsonrpc: '2.0',
+            id: null,
+            error: { code: -32700, message: 'Parse error' },
+          })
+          return
+        }
+
+        const response = await handleJsonRpcMessage(message)
         if (response) send(response)
       })
       .catch((error) => console.error(error))

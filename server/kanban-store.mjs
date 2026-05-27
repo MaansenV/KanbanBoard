@@ -13,16 +13,21 @@ const LOCK_DIR = `${DATA_FILE}.lock`
 const MCP_STATUS_FILE = resolve(
   process.env.KANBAN_MCP_STATUS_FILE ?? join(dirname(DATA_FILE), 'mcp-status.json'),
 )
+const MCP_METRICS_FILE = resolve(
+  process.env.KANBAN_MCP_METRICS_FILE ?? join(dirname(DATA_FILE), 'mcp-metrics.json'),
+)
 
 const priorities = new Set(['low', 'medium', 'high', 'critical'])
 const categories = new Set(['todo', 'doing', 'done', 'bugs', 'none'])
 
 export const dataFilePath = DATA_FILE
 export const mcpStatusFilePath = MCP_STATUS_FILE
+export const mcpMetricsFilePath = MCP_METRICS_FILE
 
 const now = () => Date.now()
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const parseStoredJson = (raw) => JSON.parse(raw.replace(/^\uFEFF/, ''))
+const estimateTokens = (text) => Math.ceil(String(text || '').length / 4)
 
 export const writeMcpStatus = async ({ connected = true } = {}) => {
   const status = {
@@ -63,6 +68,69 @@ export const readMcpStatus = async () => {
   }
 }
 
+export const readMcpMetrics = async () => {
+  try {
+    const raw = await readFile(MCP_METRICS_FILE, 'utf8')
+    const metrics = parseStoredJson(raw)
+    return {
+      calls: Array.isArray(metrics.calls) ? metrics.calls.slice(-100) : [],
+      totals: metrics.totals && typeof metrics.totals === 'object'
+        ? metrics.totals
+        : { calls: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, errors: 0 },
+      updatedAt: Number.isFinite(metrics.updatedAt) ? metrics.updatedAt : null,
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+    return {
+      calls: [],
+      totals: { calls: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, errors: 0 },
+      updatedAt: null,
+    }
+  }
+}
+
+export const appendMcpMetric = async ({
+  tool,
+  success = true,
+  durationMs = 0,
+  requestText = '',
+  responseText = '',
+  errorMessage,
+} = {}) => {
+  const requestChars = String(requestText || '').length
+  const responseChars = String(responseText || '').length
+  const inputTokens = estimateTokens(requestText)
+  const outputTokens = estimateTokens(responseText)
+  const entry = {
+    id: generateId(),
+    timestamp: now(),
+    tool: String(tool || 'unknown'),
+    success: Boolean(success),
+    durationMs: Math.max(0, Math.round(durationMs)),
+    requestChars,
+    responseChars,
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens + outputTokens,
+    ...(errorMessage ? { errorMessage: String(errorMessage).slice(0, 240) } : {}),
+  }
+
+  const current = await readMcpMetrics()
+  const calls = [...current.calls, entry].slice(-100)
+  const totals = {
+    calls: Number(current.totals.calls || 0) + 1,
+    inputTokens: Number(current.totals.inputTokens || 0) + inputTokens,
+    outputTokens: Number(current.totals.outputTokens || 0) + outputTokens,
+    totalTokens: Number(current.totals.totalTokens || 0) + entry.totalTokens,
+    errors: Number(current.totals.errors || 0) + (entry.success ? 0 : 1),
+  }
+  const metrics = { calls, totals, updatedAt: now() }
+
+  await mkdir(dirname(MCP_METRICS_FILE), { recursive: true })
+  await writeFile(MCP_METRICS_FILE, `${JSON.stringify(metrics, null, 2)}\n`, 'utf8')
+  return entry
+}
+
 export const generateId = () => {
   if (typeof randomUUID === 'function') return randomUUID().slice(0, 13)
   return Math.random().toString(36).slice(2, 15)
@@ -98,6 +166,21 @@ export const createDefaultBoard = () => ({
 })
 
 const clone = (value) => JSON.parse(JSON.stringify(value))
+const DEFAULT_TASK_LIMIT = 25
+const MAX_TASK_LIMIT = 100
+const DESCRIPTION_PREVIEW_LENGTH = 96
+const TASK_FIELD_BUILDERS = {
+  id: (task) => task.id,
+  title: (task) => task.title,
+  priority: (task) => task.priority,
+  createdAt: (task) => task.createdAt,
+  completedAt: (task) => task.completedAt,
+  descriptionPreview: (task) => previewText(task.description),
+  subtaskCount: (task) => (Array.isArray(task.subtasks) ? task.subtasks.length : 0),
+  completedSubtaskCount: (task) => (
+    Array.isArray(task.subtasks) ? task.subtasks.filter((subtask) => subtask.completed).length : 0
+  ),
+}
 
 const normalizeSubtask = (subtask = {}) => ({
   id: String(subtask.id || generateId()),
@@ -137,6 +220,105 @@ const normalizeBoard = (board = {}) => ({
   columns: Array.isArray(board.columns) ? board.columns.map(normalizeColumn) : [],
 })
 
+const clampListLimit = (limit) => {
+  if (!Number.isFinite(limit)) return DEFAULT_TASK_LIMIT
+  return Math.max(1, Math.min(Math.trunc(limit), MAX_TASK_LIMIT))
+}
+
+const clampCursor = (cursor) => {
+  if (!Number.isFinite(cursor)) return 0
+  return Math.max(0, Math.trunc(cursor))
+}
+
+const previewText = (value, maxLength = DESCRIPTION_PREVIEW_LENGTH) => {
+  if (typeof value !== 'string' || value.length === 0) return undefined
+  const collapsed = value.replace(/\s+/g, ' ').trim()
+  if (!collapsed) return undefined
+  return collapsed.length > maxLength ? `${collapsed.slice(0, maxLength - 3)}...` : collapsed
+}
+
+export const summarizeTask = (task = {}) => {
+  const subtasks = Array.isArray(task.subtasks) ? task.subtasks : []
+  const summary = {
+    id: task.id,
+    title: task.title,
+    priority: task.priority,
+    createdAt: task.createdAt,
+    subtaskCount: subtasks.length,
+    completedSubtaskCount: subtasks.filter((subtask) => subtask.completed).length,
+  }
+
+  const descriptionPreview = previewText(task.description)
+  if (descriptionPreview) summary.descriptionPreview = descriptionPreview
+  if (Number.isFinite(task.completedAt)) summary.completedAt = task.completedAt
+  return summary
+}
+
+const pickTaskFields = (task = {}, fields) => {
+  if (!Array.isArray(fields) || fields.length === 0) return summarizeTask(task)
+
+  const picked = {}
+  for (const field of fields) {
+    const builder = TASK_FIELD_BUILDERS[field]
+    if (!builder) continue
+    const value = builder(task)
+    if (value !== undefined) picked[field] = value
+  }
+  if (!Object.keys(picked).length) return summarizeTask(task)
+  return picked
+}
+
+export const summarizeColumn = (column = {}) => {
+  const cards = Array.isArray(column.cards) ? column.cards : []
+  return {
+    id: column.id,
+    title: column.title,
+    color: column.color,
+    category: column.category,
+    tasks: cards.length,
+  }
+}
+
+export const summarizeBoard = (board = {}) => {
+  const columns = Array.isArray(board.columns) ? board.columns : []
+  return {
+    id: board.id,
+    title: board.title,
+    createdAt: board.createdAt,
+    columns: columns.map(summarizeColumn),
+    columnCount: columns.length,
+    taskCount: columns.reduce((sum, column) => sum + (Array.isArray(column.cards) ? column.cards.length : 0), 0),
+  }
+}
+
+export const listColumns = async ({ boardId } = {}) => {
+  const state = await readState()
+  const board = findBoard(state, boardId)
+  return {
+    revision: state.revision,
+    updatedAt: state.updatedAt,
+    boardId: board.id,
+    boardTitle: board.title,
+    columns: board.columns.map(summarizeColumn),
+  }
+}
+
+export const summarizeState = (state = {}) => {
+  const boards = Array.isArray(state.boards) ? state.boards : []
+  return {
+    revision: state.revision,
+    updatedAt: state.updatedAt,
+    boardCount: boards.length,
+    columnCount: boards.reduce((sum, board) => sum + (Array.isArray(board.columns) ? board.columns.length : 0), 0),
+    taskCount: boards.reduce(
+      (sum, board) => sum + (Array.isArray(board.columns)
+        ? board.columns.reduce((columnSum, column) => columnSum + (Array.isArray(column.cards) ? column.cards.length : 0), 0)
+        : 0),
+      0,
+    ),
+  }
+}
+
 export const normalizeState = (input = {}) => {
   const boardsInput = Array.isArray(input) ? input : input.boards
   const boards = Array.isArray(boardsInput)
@@ -157,15 +339,50 @@ const createStaleStateError = (current) => {
   return error
 }
 
+const isProcessAlive = (pid) => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    // EPERM means the process exists but we can't signal it — treat as alive
+    if (error.code === 'EPERM') return true
+    return false
+  }
+}
+
 const withWriteLock = async (operation) => {
   const startedAt = now()
 
   while (true) {
     try {
       await mkdir(LOCK_DIR)
+      try {
+        await writeFile(`${LOCK_DIR}/pid`, String(process.pid), 'utf8')
+      } catch (pidError) {
+        // Pid file write failed — clean up the lock we just acquired
+        await rm(LOCK_DIR, { recursive: true, force: true }).catch(() => {})
+        throw pidError
+      }
       break
     } catch (error) {
-      if (error.code !== 'EEXIST' || now() - startedAt > 3000) throw error
+      if (error.code !== 'EEXIST') throw error
+
+      // Check for stale lock (crashed holder)
+      const elapsed = now() - startedAt
+      if (elapsed > 3000) {
+        const pidRaw = await readFile(`${LOCK_DIR}/pid`, 'utf8').catch(() => null)
+        if (pidRaw !== null) {
+          const holderPid = Number(pidRaw.trim())
+          if (!Number.isFinite(holderPid) || holderPid <= 0 || !isProcessAlive(holderPid)) {
+            // Stale lock — clean it up and retry
+            await rm(LOCK_DIR, { recursive: true, force: true }).catch(() => {})
+            continue
+          }
+        }
+        // PID file missing or holder is alive — not safe to clean up
+        throw error
+      }
+
       await sleep(35)
     }
   }
@@ -195,9 +412,15 @@ export const writeState = async (state) => {
   normalized.updatedAt = now()
 
   await mkdir(dirname(DATA_FILE), { recursive: true })
-  const tmpPath = `${DATA_FILE}.${process.pid}.tmp`
-  await writeFile(tmpPath, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8')
-  await rename(tmpPath, DATA_FILE)
+  const tmpPath = `${DATA_FILE}.${process.pid}-${generateId()}.tmp`
+  try {
+    await writeFile(tmpPath, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8')
+    await rename(tmpPath, DATA_FILE)
+  } catch (error) {
+    // Clean up orphaned tmp file on any failure
+    await rm(tmpPath, { force: true }).catch(() => {})
+    throw error
+  }
   return normalized
 }
 
@@ -250,6 +473,115 @@ export const findTask = (board, taskId) => {
     if (task) return { column, task }
   }
   throw new Error(`Task not found: ${taskId}`)
+}
+
+const taskMatchesFilters = (task, column, { query = '', priority, category } = {}) => {
+  const needle = String(query || '').toLowerCase()
+  const haystack = `${task.title} ${task.description || ''}`.toLowerCase()
+  if (needle && !haystack.includes(needle)) return false
+  if (priority && task.priority !== priority) return false
+  if (category && column.category !== category) return false
+  return true
+}
+
+const taskSearchRank = (task, query = '') => {
+  const needle = String(query || '').trim().toLowerCase()
+  if (!needle) return 0
+
+  const title = String(task.title || '').toLowerCase()
+  const description = String(task.description || '').toLowerCase()
+  if (title === needle) return 0
+  if (title.startsWith(needle)) return 1
+  if (title.includes(needle)) return 2
+  if (description.startsWith(needle)) return 3
+  return 4
+}
+
+const taskListItem = (board, column, task, { includeFullTask = false, fields } = {}) => ({
+  boardId: board.id,
+  boardTitle: board.title,
+  columnId: column.id,
+  columnTitle: column.title,
+  columnCategory: column.category,
+  task: includeFullTask ? task : pickTaskFields(task, fields),
+})
+
+export const getBoardSummary = async ({ boardId } = {}) => {
+  const state = await readState()
+  const boards = boardId ? [findBoard(state, boardId)] : state.boards
+  return {
+    revision: state.revision,
+    updatedAt: state.updatedAt,
+    boards: boards.map(summarizeBoard),
+  }
+}
+
+export const getTask = async ({ boardId, taskId }) => {
+  const state = await readState()
+  const board = findBoard(state, boardId)
+  const { column, task } = findTask(board, taskId)
+  return {
+    revision: state.revision,
+    updatedAt: state.updatedAt,
+    boardId: board.id,
+    boardTitle: board.title,
+    columnId: column.id,
+    columnTitle: column.title,
+    columnCategory: column.category,
+    task,
+  }
+}
+
+export const listTasks = async ({
+  boardId,
+  columnId,
+  query = '',
+  priority,
+  category,
+  limit = DEFAULT_TASK_LIMIT,
+  cursor = 0,
+  includeFullTask = false,
+  fields,
+} = {}) => {
+  const state = await readState()
+  const boards = boardId ? [findBoard(state, boardId)] : state.boards
+  const matches = []
+
+  for (const board of boards) {
+    for (const column of board.columns) {
+      if (columnId && column.id !== columnId) continue
+      for (const task of column.cards) {
+        if (!taskMatchesFilters(task, column, { query, priority, category })) continue
+        matches.push({
+          rank: taskSearchRank(task, query),
+          title: task.title,
+          id: task.id,
+          item: taskListItem(board, column, task, { includeFullTask, fields }),
+        })
+      }
+    }
+  }
+
+  matches.sort((left, right) => (
+    left.rank - right.rank ||
+    String(left.title || '').localeCompare(String(right.title || '')) ||
+    String(left.id || '').localeCompare(String(right.id || ''))
+  ))
+
+  const start = clampCursor(cursor)
+  const pageSize = clampListLimit(limit)
+  const page = matches.slice(start, start + pageSize)
+  const nextCursor = start + page.length < matches.length ? start + page.length : null
+
+  return {
+    revision: state.revision,
+    updatedAt: state.updatedAt,
+    total: matches.length,
+    cursor: start,
+    limit: pageSize,
+    nextCursor,
+    tasks: page.map((match) => match.item),
+  }
 }
 
 export const createBoard = async ({ title, withDefaultColumns = true }) =>
@@ -398,23 +730,4 @@ export const toggleSubtask = async ({ boardId, taskId, subtaskId, completed }) =
     return subtask
   })
 
-export const searchTasks = async ({ boardId, query = '', priority, category } = {}) => {
-  const state = await readState()
-  const boards = boardId ? [findBoard(state, boardId)] : state.boards
-  const needle = String(query).toLowerCase()
-  const tasks = []
-
-  for (const board of boards) {
-    for (const column of board.columns) {
-      for (const task of column.cards) {
-        const haystack = `${task.title} ${task.description || ''}`.toLowerCase()
-        if (needle && !haystack.includes(needle)) continue
-        if (priority && task.priority !== priority) continue
-        if (category && column.category !== category) continue
-        tasks.push({ boardId: board.id, boardTitle: board.title, columnId: column.id, columnTitle: column.title, task })
-      }
-    }
-  }
-
-  return tasks
-}
+export const searchTasks = async (args = {}) => listTasks(args)

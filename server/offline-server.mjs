@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { dataFilePath, readMcpStatus, readState, replaceBoards } from './kanban-store.mjs'
+import { dataFilePath, readMcpMetrics, readMcpStatus, readState, replaceBoards } from './kanban-store.mjs'
 
 const host = process.env.KANBAN_HOST || '127.0.0.1'
 const port = Number(process.env.KANBAN_PORT || 4174)
@@ -23,8 +23,9 @@ const readBody = (req) =>
     req.on('data', (chunk) => {
       body += chunk
       if (body.length > 2_000_000) {
+        req.removeAllListeners('data')
+        req.pause()
         reject(new Error('Request body is too large.'))
-        req.destroy()
       }
     })
     req.on('end', () => resolve(body))
@@ -47,6 +48,11 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/api/mcp-status') {
       sendJson(res, 200, await readMcpStatus())
+      return
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/mcp-metrics') {
+      sendJson(res, 200, await readMcpMetrics())
       return
     }
 

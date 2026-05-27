@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, BarChart3, Terminal } from 'lucide-react'
-import type { Board } from '../../types'
+import type { Board, McpMetrics, McpStatus, StorageMode } from '../../types'
 import { ProjectStatistics } from '../stats/ProjectStatistics'
 import { McpActivityLog } from '../mcp/McpActivityLog'
 import type { LogEntry } from '../mcp/McpActivityLog'
@@ -10,6 +10,10 @@ type SidebarProps = {
   deletedCount: number
   lastActivity: number
   logs?: LogEntry[]
+  mcpStatus?: McpStatus | null
+  mcpMetrics?: McpMetrics
+  storageMode?: StorageMode
+  syncError?: string | null
   onClearLogs?: () => void
   className?: string
 }
@@ -19,6 +23,10 @@ export const Sidebar = ({
   deletedCount,
   lastActivity,
   logs,
+  mcpStatus,
+  mcpMetrics,
+  storageMode,
+  syncError,
   onClearLogs,
   className = '',
 }: SidebarProps) => {
@@ -27,7 +35,7 @@ export const Sidebar = ({
   return (
     <div
       className={`relative h-full flex flex-col transition-all duration-700 ease-in-out border-r border-border bg-background/40 backdrop-blur-md ${
-        isCollapsed ? 'w-16' : 'w-80'
+        isCollapsed ? 'w-16' : 'w-96'
       } ${className}`}
     >
       {/* Collapse/Expand Toggle Button */}
@@ -53,7 +61,7 @@ export const Sidebar = ({
         // Expanded View
         <div className="flex flex-col h-full p-4 gap-4 overflow-hidden">
           {/* Top Section - Project Statistics */}
-          <div className="flex-1 min-h-0">
+          <div className="flex-[0.9] min-h-0">
             <ProjectStatistics
               board={board}
               deletedCount={deletedCount}
@@ -63,7 +71,14 @@ export const Sidebar = ({
 
           {/* Bottom Section - MCP Activity Log */}
           <div className="shrink-0">
-            <McpActivityLog logs={logs} onClear={onClearLogs} />
+            <McpActivityLog
+              logs={logs}
+              mcpStatus={mcpStatus}
+              mcpMetrics={mcpMetrics}
+              storageMode={storageMode}
+              syncError={syncError}
+              onClear={onClearLogs}
+            />
           </div>
         </div>
       )}

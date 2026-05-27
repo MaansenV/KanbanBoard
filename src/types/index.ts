@@ -87,6 +87,33 @@ export type McpStatus = {
   pid: number | null
   updatedAt: number | null
   ageMs: number | null
+  dataFile?: string
+}
+
+export type McpMetricCall = {
+  id: string
+  timestamp: number
+  tool: string
+  success: boolean
+  durationMs: number
+  requestChars: number
+  responseChars: number
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  errorMessage?: string
+}
+
+export type McpMetrics = {
+  calls: McpMetricCall[]
+  totals: {
+    calls: number
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+    errors: number
+  }
+  updatedAt: number | null
 }
 
 // ── Filtering & Sorting ─────────────────────────────────────────────

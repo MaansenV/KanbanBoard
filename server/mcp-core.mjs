@@ -1,5 +1,6 @@
 import {
   addSubtask,
+  appendMcpMetric,
   createBoard,
   createColumn,
   createTask,
@@ -7,10 +8,18 @@ import {
   deleteBoard,
   deleteColumn,
   deleteTask,
+  getBoardSummary,
+  getTask,
+  listColumns,
+  listTasks,
   moveTask,
   readState,
   replaceBoards,
   searchTasks,
+  summarizeBoard,
+  summarizeColumn,
+  summarizeState,
+  summarizeTask,
   toggleSubtask,
   updateBoard,
   updateColumn,
@@ -21,10 +30,18 @@ export const textResult = (value) => ({
   content: [
     {
       type: 'text',
-      text: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
+      text: typeof value === 'string' ? value : JSON.stringify(value),
     },
   ],
 })
+
+const metricText = (value) => {
+  try {
+    return typeof value === 'string' ? value : JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
 
 const objectSchema = (properties = {}, required = []) => {
   const schema = {
@@ -45,12 +62,44 @@ const nullableNumberProp = (description) => ({
 })
 const arrayProp = (description, items = { type: 'object' }) => ({ type: 'array', description, items })
 
+const okResult = (state, result = {}) => ({
+  ok: true,
+  revision: state.revision,
+  updatedAt: state.updatedAt,
+  ...result,
+})
+
+const compactBoardResult = ({ state, result }) => okResult(state, { board: summarizeBoard(result) })
+const compactColumnResult = ({ state, result }) => okResult(state, { column: summarizeColumn(result) })
+const compactTaskResult = ({ state, result }) => okResult(state, { task: summarizeTask(result) })
+const compactSubtaskResult = ({ state, result }) => okResult(state, { subtask: result })
+const taskFieldsProp = () => arrayProp('Optional task fields to return. Supported: id, title, priority, createdAt, completedAt, descriptionPreview, subtaskCount, completedSubtaskCount.', {
+  type: 'string',
+  enum: [
+    'id',
+    'title',
+    'priority',
+    'createdAt',
+    'completedAt',
+    'descriptionPreview',
+    'subtaskCount',
+    'completedSubtaskCount',
+  ],
+})
+
 export const toolDefinitions = [
   {
     name: 'get_board_state',
-    description: 'Read the complete Kanban state, including boards, columns, tasks, and subtasks.',
-    inputSchema: objectSchema(),
-    handler: async () => ({ dataFile: dataFilePath, ...(await readState()) }),
+    description: 'Expensive full-state debug/export read. Prefer get_board_summary, list_tasks, search_tasks, or get_task for normal work.',
+    inputSchema: objectSchema({
+      confirmExpensive: booleanProp('Must be true to read the full board state. Prefer compact tools for normal work.'),
+    }, ['confirmExpensive']),
+    handler: async ({ confirmExpensive }) => {
+      if (confirmExpensive !== true) {
+        throw new Error('get_board_state is expensive. Use get_board_summary/list_columns/list_tasks/get_task, or pass confirmExpensive: true for export/debug.')
+      }
+      return { dataFile: dataFilePath, ...(await readState()) }
+    },
   },
   {
     name: 'replace_board_state',
@@ -59,21 +108,57 @@ export const toolDefinitions = [
       boards: arrayProp('Complete board array to store.'),
       revision: numberProp('Optional expected state revision. When supplied, the replacement is rejected if the board changed first.'),
     }, ['boards']),
-    handler: async ({ boards, revision }) => replaceBoards(boards, revision ?? null),
+    handler: async ({ boards, revision }) => {
+      const state = await replaceBoards(boards, revision ?? null)
+      return okResult(state, summarizeState(state))
+    },
   },
   {
     name: 'list_boards',
-    description: 'List boards with column and task counts.',
+    description: 'List compact board summaries with column and task counts. Prefer this before any full-state read.',
     inputSchema: objectSchema(),
-    handler: async () => {
-      const state = await readState()
-      return state.boards.map((board) => ({
-        id: board.id,
-        title: board.title,
-        columns: board.columns.length,
-        tasks: board.columns.reduce((sum, column) => sum + column.cards.length, 0),
-      }))
-    },
+    handler: async () => getBoardSummary(),
+  },
+  {
+    name: 'get_board_summary',
+    description: 'Read compact board and column metadata with counts, without task bodies.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Optional board id. Omit to summarize all boards.'),
+    }),
+    handler: async (args) => getBoardSummary(args),
+  },
+  {
+    name: 'list_columns',
+    description: 'List compact columns for one board with task counts, without task bodies.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Board id. Omit only if you want the first board.'),
+    }),
+    handler: async (args) => listColumns(args),
+  },
+  {
+    name: 'list_tasks',
+    description: 'List compact task rows with pagination. Descriptions are returned as short previews unless includeFullTask is true.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Optional board id.'),
+      columnId: stringProp('Optional column id.'),
+      query: stringProp('Optional text to match in title or description.'),
+      priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+      category: { type: 'string', enum: ['todo', 'doing', 'done', 'bugs', 'none'] },
+      limit: numberProp('Maximum tasks to return. Defaults to 25, maximum 100.'),
+      cursor: numberProp('Zero-based pagination cursor from a prior response.'),
+      includeFullTask: booleanProp('When true, returns full task objects. Use get_task instead when you only need one task.'),
+      fields: taskFieldsProp(),
+    }),
+    handler: async (args) => listTasks(args),
+  },
+  {
+    name: 'get_task',
+    description: 'Read one full task by id, including description and subtasks.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Board id. Omit only if you want the first board.'),
+      taskId: stringProp('Task id.'),
+    }, ['taskId']),
+    handler: async (args) => getTask(args),
   },
   {
     name: 'create_board',
@@ -82,7 +167,7 @@ export const toolDefinitions = [
       title: stringProp('Board title.'),
       withDefaultColumns: booleanProp('When true, creates To Do, In Progress, and Done columns. Defaults to true.'),
     }, ['title']),
-    handler: async (args) => createBoard(args),
+    handler: async (args) => compactBoardResult(await createBoard(args)),
   },
   {
     name: 'update_board',
@@ -91,7 +176,7 @@ export const toolDefinitions = [
       boardId: stringProp('Board id.'),
       title: stringProp('New board title.'),
     }, ['boardId', 'title']),
-    handler: async (args) => updateBoard(args),
+    handler: async (args) => compactBoardResult(await updateBoard(args)),
   },
   {
     name: 'delete_board',
@@ -99,7 +184,10 @@ export const toolDefinitions = [
     inputSchema: objectSchema({
       boardId: stringProp('Board id.'),
     }, ['boardId']),
-    handler: async (args) => deleteBoard(args),
+    handler: async (args) => {
+      const { state, result } = await deleteBoard(args)
+      return okResult(state, result)
+    },
   },
   {
     name: 'create_column',
@@ -110,7 +198,7 @@ export const toolDefinitions = [
       color: stringProp('Tailwind color class, e.g. bg-blue-500.'),
       category: { type: 'string', enum: ['todo', 'doing', 'done', 'bugs', 'none'] },
     }, ['title']),
-    handler: async (args) => createColumn(args),
+    handler: async (args) => compactColumnResult(await createColumn(args)),
   },
   {
     name: 'update_column',
@@ -122,7 +210,7 @@ export const toolDefinitions = [
       color: stringProp('Tailwind color class, e.g. bg-emerald-500.'),
       category: { type: 'string', enum: ['todo', 'doing', 'done', 'bugs', 'none'] },
     }, ['columnId']),
-    handler: async (args) => updateColumn(args),
+    handler: async (args) => compactColumnResult(await updateColumn(args)),
   },
   {
     name: 'delete_column',
@@ -131,7 +219,10 @@ export const toolDefinitions = [
       boardId: stringProp('Board id. Omit only if you want the first board.'),
       columnId: stringProp('Column id.'),
     }, ['columnId']),
-    handler: async (args) => deleteColumn(args),
+    handler: async (args) => {
+      const { state, result } = await deleteColumn(args)
+      return okResult(state, result)
+    },
   },
   {
     name: 'create_task',
@@ -147,7 +238,7 @@ export const toolDefinitions = [
         completed: booleanProp('Completion state.'),
       }, ['title'])),
     }, ['title']),
-    handler: async (args) => createTask(args),
+    handler: async (args) => compactTaskResult(await createTask(args)),
   },
   {
     name: 'update_task',
@@ -161,7 +252,7 @@ export const toolDefinitions = [
       subtasks: arrayProp('Full replacement subtask array.'),
       completedAt: nullableNumberProp('Unix timestamp in milliseconds, or null to clear.'),
     }, ['taskId']),
-    handler: async (args) => updateTask(args),
+    handler: async (args) => compactTaskResult(await updateTask(args)),
   },
   {
     name: 'move_task',
@@ -172,7 +263,15 @@ export const toolDefinitions = [
       targetColumnId: stringProp('Target column id.'),
       targetIndex: numberProp('Optional zero-based target index.'),
     }, ['taskId', 'targetColumnId']),
-    handler: async (args) => moveTask(args),
+    handler: async (args) => {
+      const { state, result } = await moveTask(args)
+      return okResult(state, {
+        fromColumnId: result.fromColumnId,
+        toColumnId: result.toColumnId,
+        index: result.index,
+        task: summarizeTask(result.task),
+      })
+    },
   },
   {
     name: 'delete_task',
@@ -181,7 +280,10 @@ export const toolDefinitions = [
       boardId: stringProp('Board id. Omit only if you want the first board.'),
       taskId: stringProp('Task id.'),
     }, ['taskId']),
-    handler: async (args) => deleteTask(args),
+    handler: async (args) => {
+      const { state, result } = await deleteTask(args)
+      return okResult(state, result)
+    },
   },
   {
     name: 'add_subtask',
@@ -192,7 +294,7 @@ export const toolDefinitions = [
       title: stringProp('Subtask title.'),
       completed: booleanProp('Completion state. Defaults to false.'),
     }, ['taskId', 'title']),
-    handler: async (args) => addSubtask(args),
+    handler: async (args) => compactSubtaskResult(await addSubtask(args)),
   },
   {
     name: 'toggle_subtask',
@@ -203,16 +305,20 @@ export const toolDefinitions = [
       subtaskId: stringProp('Subtask id.'),
       completed: booleanProp('Optional explicit completion state.'),
     }, ['taskId', 'subtaskId']),
-    handler: async (args) => toggleSubtask(args),
+    handler: async (args) => compactSubtaskResult(await toggleSubtask(args)),
   },
   {
     name: 'search_tasks',
-    description: 'Search tasks by text, priority, or column category.',
+    description: 'Search compact task rows by text, priority, or column category. Uses pagination and short description previews by default.',
     inputSchema: objectSchema({
       boardId: stringProp('Optional board id.'),
       query: stringProp('Text to search in title and description.'),
       priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
       category: { type: 'string', enum: ['todo', 'doing', 'done', 'bugs', 'none'] },
+      limit: numberProp('Maximum tasks to return. Defaults to 25, maximum 100.'),
+      cursor: numberProp('Zero-based pagination cursor from a prior response.'),
+      includeFullTask: booleanProp('When true, returns full task objects. Prefer get_task when you only need one full task.'),
+      fields: taskFieldsProp(),
     }),
     handler: async (args) => searchTasks(args),
   },
@@ -221,6 +327,21 @@ export const toolDefinitions = [
 const tools = new Map(toolDefinitions.map((tool) => [tool.name, tool]))
 
 export const handleJsonRpcMessage = async (message) => {
+  // Validate JSON-RPC 2.0 request structure
+  if (
+    message === null ||
+    typeof message !== 'object' ||
+    message.jsonrpc !== '2.0' ||
+    typeof message.method !== 'string'
+  ) {
+    return {
+      jsonrpc: '2.0',
+      id: message && (typeof message.id === 'number' || typeof message.id === 'string') ? message.id : null,
+      error: { code: -32600, message: 'Invalid Request' },
+    }
+  }
+
+  // Valid request with no id is a notification — do not respond
   if (message.id === undefined || message.id === null) return null
 
   try {
@@ -264,8 +385,51 @@ export const handleJsonRpcMessage = async (message) => {
         }
       }
 
-      const result = await tool.handler(message.params?.arguments || {})
-      return { jsonrpc: '2.0', id: message.id, result: textResult(result) }
+      const startedAt = Date.now()
+      const requestText = metricText({
+        name: message.params?.name,
+        arguments: message.params?.arguments || {},
+      })
+
+      try {
+        const result = await tool.handler(message.params?.arguments || {})
+        const toolResult = textResult(result)
+        const responseText = toolResult.content?.[0]?.text ?? metricText(toolResult)
+        void appendMcpMetric({
+          tool: tool.name,
+          success: true,
+          durationMs: Date.now() - startedAt,
+          requestText,
+          responseText,
+        }).catch((metricError) => console.error('Kanban MCP metric write failed:', metricError))
+        return { jsonrpc: '2.0', id: message.id, result: toolResult }
+      } catch (error) {
+        const errorValue = error instanceof Error
+          ? {
+              message: error.message,
+              name: error.name,
+              ...(error.code != null ? { code: error.code } : {}),
+              ...Object.fromEntries(Object.entries(error)),
+            }
+          : typeof error === 'object' && error !== null
+          ? error
+          : String(error)
+        const toolResult = { ...textResult(errorValue), isError: true }
+        const responseText = toolResult.content?.[0]?.text ?? metricText(toolResult)
+        void appendMcpMetric({
+          tool: tool.name,
+          success: false,
+          durationMs: Date.now() - startedAt,
+          requestText,
+          responseText,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        }).catch((metricError) => console.error('Kanban MCP metric write failed:', metricError))
+        return {
+          jsonrpc: '2.0',
+          id: message.id,
+          result: toolResult,
+        }
+      }
     }
 
     return {
@@ -274,10 +438,11 @@ export const handleJsonRpcMessage = async (message) => {
       error: { code: -32601, message: `Unknown method: ${message.method}` },
     }
   } catch (error) {
+    console.error('Kanban MCP internal error:', error)
     return {
       jsonrpc: '2.0',
       id: message.id,
-      result: { ...textResult(error.message), isError: true },
+      error: { code: -32603, message: 'Internal error' },
     }
   }
 }

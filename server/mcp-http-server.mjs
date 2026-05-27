@@ -36,8 +36,9 @@ const readBody = (req) =>
     req.on('data', (chunk) => {
       body += chunk
       if (body.length > 2_000_000) {
+        req.removeAllListeners('data')
+        req.pause()
         reject(new Error('Request body is too large.'))
-        req.destroy()
       }
     })
     req.on('end', () => resolve(body))
@@ -92,8 +93,34 @@ const server = createServer(async (req, res) => {
       return
     }
 
-    const rawBody = await readBody(req)
-    const response = await handleRpcPayload(JSON.parse(rawBody))
+    // Phase 1: read body
+    let rawBody
+    try {
+      rawBody = await readBody(req)
+    } catch (error) {
+      sendJson(res, 400, {
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32600, message: 'Invalid Request' },
+      })
+      return
+    }
+
+    // Phase 2: parse JSON
+    let payload
+    try {
+      payload = JSON.parse(rawBody)
+    } catch (error) {
+      sendJson(res, 200, {
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32700, message: 'Parse error' },
+      })
+      return
+    }
+
+    // Phase 3: dispatch via handleRpcPayload (supports batch and single)
+    const response = await handleRpcPayload(payload)
     if (!response) {
       res.writeHead(202, headers)
       res.end()
@@ -102,10 +129,11 @@ const server = createServer(async (req, res) => {
 
     sendJson(res, 200, response)
   } catch (error) {
+    console.error('Kanban MCP HTTP internal error:', error)
     sendJson(res, 500, {
       jsonrpc: '2.0',
       id: null,
-      error: { code: -32603, message: error.message },
+      error: { code: -32603, message: 'Internal error' },
     })
   }
 })
