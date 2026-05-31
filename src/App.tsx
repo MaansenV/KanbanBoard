@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Layout, Plus } from 'lucide-react'
 import type { Board, Column, Card, ModalState, CommandPaletteAction } from './types'
-import type { LogEntry } from './components/mcp/McpActivityLog'
 import { PRIORITIES } from './types'
 import { Button } from './components/ui/Button'
 import { UndoToast } from './components/ui/Toast'
@@ -23,48 +22,13 @@ import { useFilters } from './hooks/useFilters'
 import { useUndoDelete } from './hooks/useUndoDelete'
 import { useFoldedTasks } from './hooks/useFoldedTasks'
 import { useMcpStatus } from './hooks/useMcpStatus'
-import { useMcpMetrics } from './hooks/useMcpMetrics'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
-import { generateId } from './utils/helpers'
 
 const App = () => {
   const [modal, setModal] = useState<ModalState>({ type: null, data: null })
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const [deletedCount, setDeletedCount] = useState(0)
   const [lastActivity, setLastActivity] = useState<number>(Date.now())
-
-  // Developer activity log stream
-  const [logs, setLogs] = useState<LogEntry[]>(() => [
-    {
-      id: 'init-1',
-      timestamp: Date.now() - 15000,
-      type: 'info',
-      title: 'Kanban Client gestartet',
-      message: 'UI bereit, Persistenz wird geprueft.',
-      meta: { source: 'app' },
-    },
-    {
-      id: 'init-2',
-      timestamp: Date.now() - 12000,
-      type: 'sync',
-      title: 'Persistenz initialisiert',
-      message: 'Warte auf Offline API und MCP Heartbeat.',
-      meta: { source: 'storage' },
-    },
-  ])
-
-  const addLog = useCallback((type: LogEntry['type'], message: string, details?: Omit<LogEntry, 'id' | 'timestamp' | 'type' | 'message'>) => {
-    setLogs((prev) => [
-      ...prev.slice(-119),
-      {
-        id: generateId(),
-        timestamp: Date.now(),
-        type,
-        message,
-        ...details,
-      },
-    ])
-  }, [])
 
   // Custom Hooks
   const {
@@ -91,39 +55,16 @@ const App = () => {
   const { storageMode, syncError } = useOfflineSync(boards, {
     onBoardsLoaded: (loadedBoards) => {
       importBoards(loadedBoards)
-      const taskCount = loadedBoards.reduce(
-        (sum, board) => sum + board.columns.reduce((columnSum, column) => columnSum + column.cards.length, 0),
-        0,
-      )
-      addLog('sync', `${loadedBoards.length} Boards, ${taskCount} Aufgaben geladen.`, {
-        title: 'Boards aus Offline API geladen',
-        meta: { boards: loadedBoards.length, tasks: taskCount },
-      })
     },
     onActiveBoardUpdate: (updater) => {
       setActiveBoardId(updater(activeBoardId))
     },
     onLastActivity: () => setLastActivity(Date.now()),
-    onSyncError: (err) => {
-      if (err) {
-        addLog('error', err, {
-          title: 'Synchronisation fehlgeschlagen',
-          meta: { mode: storageMode },
-        })
-      } else {
-        addLog('success', 'Board-State wurde gespeichert.', {
-          title: 'Synchronisation abgeschlossen',
-          meta: { boards: boards.length },
-        })
-      }
-    },
+    onSyncError: () => {},
   })
 
   const { darkMode, toggleTheme } = useTheme()
   const mcpStatus = useMcpStatus(storageMode)
-  const mcpMetrics = useMcpMetrics(storageMode)
-  const previousMcpConnected = useRef<boolean | null>(null)
-  const previousStorageMode = useRef<string | null>(null)
   const { dragState, handleDragStart, handleDragEnd } = useDragAndDrop()
   const { deletedTaskUndo, setDeletedTaskUndo } = useUndoDelete()
   const { foldedTaskIds, toggleFold } = useFoldedTasks()
@@ -143,38 +84,6 @@ const App = () => {
     hasActiveFilters,
     clearFilters,
   } = useFilters(activeBoard)
-
-  useEffect(() => {
-    if (previousStorageMode.current === storageMode) return
-    previousStorageMode.current = storageMode
-
-    const labels = {
-      loading: 'Initialisierung',
-      api: 'Offline API',
-      local: 'Browser LocalStorage',
-    }
-    addLog(storageMode === 'api' ? 'success' : storageMode === 'local' ? 'warning' : 'info', `Speichermodus: ${labels[storageMode]}.`, {
-      title: 'Storage Modus gewechselt',
-      meta: { mode: storageMode },
-    })
-  }, [addLog, storageMode])
-
-  useEffect(() => {
-    if (storageMode !== 'api' || !mcpStatus) return
-    const isConnected = Boolean(mcpStatus.connected)
-    if (previousMcpConnected.current === isConnected) return
-    previousMcpConnected.current = isConnected
-
-    addLog(isConnected ? 'success' : 'warning', isConnected ? 'MCP Heartbeat empfangen.' : 'Kein aktueller MCP Heartbeat.', {
-      title: isConnected ? 'MCP verbunden' : 'MCP offline',
-      details: [
-        `PID: ${mcpStatus.pid ?? 'unbekannt'}`,
-        `Heartbeat Alter: ${Number.isFinite(mcpStatus.ageMs) ? `${Math.round((mcpStatus.ageMs ?? 0) / 1000)}s` : 'unbekannt'}`,
-        `Datenquelle: ${mcpStatus.dataFile ?? 'unbekannt'}`,
-      ],
-      meta: { pid: mcpStatus.pid, connected: isConnected },
-    })
-  }, [addLog, mcpStatus, storageMode])
 
   // Keyboard Shortcuts
   useKeyboardShortcuts({
@@ -198,26 +107,10 @@ const App = () => {
     anchor.href = dataStr
     anchor.download = 'kanban.json'
     anchor.click()
-    const taskCount = boards.reduce(
-      (sum, board) => sum + board.columns.reduce((columnSum, column) => columnSum + column.cards.length, 0),
-      0,
-    )
-    addLog('info', 'Kanban-Daten als JSON heruntergeladen.', {
-      title: 'Export erstellt',
-      meta: { boards: boards.length, tasks: taskCount },
-    })
   }
 
   const handleImport = (importedBoards: Board[]) => {
     importBoards(importedBoards)
-    const taskCount = importedBoards.reduce(
-      (sum, board) => sum + board.columns.reduce((columnSum, column) => columnSum + column.cards.length, 0),
-      0,
-    )
-    addLog('success', `${importedBoards.length} Projekte importiert.`, {
-      title: 'Import abgeschlossen',
-      meta: { boards: importedBoards.length, tasks: taskCount },
-    })
   }
 
   // Deletion logic
@@ -227,7 +120,6 @@ const App = () => {
     setDeletedTaskUndo(null)
     setDeletedCount((prev) => Math.max(0, prev - 1))
     setLastActivity(Date.now())
-    addLog('success', `Gelöschte Aufgabe "${deletedTaskUndo.card.title}" wiederhergestellt.`)
   }
 
   const handleDeleteConfirm = () => {
@@ -235,10 +127,8 @@ const App = () => {
     const { type, id, parentId } = modal.data as { type: 'board' | 'column' | 'card'; id: string; parentId?: string }
     if (type === 'board') {
       deleteBoard(id)
-      addLog('warning', 'Projekt gelöscht.')
     } else if (type === 'column') {
       deleteColumn(activeBoardId!, id)
-      addLog('warning', 'Spalte gelöscht.')
     } else if (type === 'card') {
       const deletedInfo = deleteCard(activeBoardId!, parentId!, id)
       if (deletedInfo) {
@@ -250,7 +140,6 @@ const App = () => {
           deletedAt: Date.now(),
         })
         setDeletedCount((prev) => prev + 1)
-        addLog('warning', `Aufgabe "${deletedInfo.card.title}" gelöscht.`)
       }
     }
     setModal({ type: null })
@@ -371,12 +260,6 @@ const App = () => {
             board={activeBoard}
             deletedCount={deletedCount}
             lastActivity={lastActivity}
-            logs={logs}
-            mcpStatus={mcpStatus}
-            mcpMetrics={mcpMetrics}
-            storageMode={storageMode}
-            syncError={syncError}
-            onClearLogs={() => setLogs([])}
           />
 
           <div className="flex flex-1 flex-col overflow-hidden">
@@ -425,9 +308,7 @@ const App = () => {
                       foldedTaskIds={foldedTaskIds}
                       onFoldToggle={toggleFold}
                       onEditCard={(columnId, card) => setModal({ type: 'editCard', data: { colId: columnId, card } })}
-                      onCopyCard={() => {
-                        addLog('success', 'Aufgabe in die Zwischenablage kopiert.')
-                      }}
+                      onCopyCard={() => {}}
                       onDeleteCard={(columnId, cardId) => {
                         const c = activeBoard.columns.find((x) => x.id === columnId)
                         const card = c?.cards.find((x) => x.id === cardId)
@@ -459,10 +340,6 @@ const App = () => {
                         if (dragState.type === 'card' && dragState.sourceId && dragState.id) {
                           dropCard(activeBoard.id, dragState.sourceId, targetColId, dragState.id, targetIndex)
                           setLastActivity(Date.now())
-                          addLog(
-                            'info',
-                            `Aufgabe verschoben nach ${activeBoard.columns.find((c) => c.id === targetColId)?.title}`,
-                          )
                         }
                       }}
                       handleDropColumn={(targetColId) => {
@@ -514,11 +391,9 @@ const App = () => {
           if (!title.trim()) return
           if (modal.type === 'createBoard') {
             createBoard(title)
-            addLog('success', `Projekt "${title}" erstellt.`)
           } else if (modal.type === 'editBoard' && modal.data?.board) {
             const boardId = (modal.data.board as Board).id
             updateBoard(boardId, title)
-            addLog('info', `Projekt in "${title}" umbenannt.`)
           }
           setModal({ type: null })
           setLastActivity(Date.now())
@@ -534,11 +409,9 @@ const App = () => {
           if (!activeBoardId || !title.trim()) return
           if (modal.type === 'createColumn') {
             createColumn(activeBoardId, title, color, category)
-            addLog('success', `Spalte "${title}" erstellt.`)
           } else if (modal.type === 'editColumn' && modal.data?.col) {
             const colId = (modal.data.col as Column).id
             updateColumn(activeBoardId, colId, title, color, category)
-            addLog('info', `Spalte "${title}" aktualisiert.`)
           }
           setModal({ type: null })
           setLastActivity(Date.now())
@@ -556,11 +429,9 @@ const App = () => {
           if (!colId) return
           if (modal.type === 'createCard') {
             createCard(activeBoardId, colId, { title, description, priority, subtasks })
-            addLog('success', `Aufgabe "${title}" erstellt.`)
           } else if (modal.type === 'editCard' && modal.data?.card) {
             const cardId = (modal.data.card as Card).id
             updateCard(activeBoardId, colId, cardId, { title, description, priority, subtasks })
-            addLog('info', `Aufgabe "${title}" aktualisiert.`)
           }
           setModal({ type: null })
           setLastActivity(Date.now())

@@ -175,6 +175,11 @@ const TASK_FIELD_BUILDERS = {
   priority: (task) => task.priority,
   createdAt: (task) => task.createdAt,
   completedAt: (task) => task.completedAt,
+  owner: (task) => task.owner,
+  claimedAt: (task) => task.claimedAt,
+  lastTouchedAt: (task) => task.lastTouchedAt,
+  blockedReasonPreview: (task) => previewText(task.blockedReason),
+  noteCount: (task) => (Array.isArray(task.notes) ? task.notes.length : 0),
   descriptionPreview: (task) => previewText(task.description),
   subtaskCount: (task) => (Array.isArray(task.subtasks) ? task.subtasks.length : 0),
   completedSubtaskCount: (task) => (
@@ -188,6 +193,16 @@ const normalizeSubtask = (subtask = {}) => ({
   completed: Boolean(subtask.completed),
 })
 
+const noteTypes = new Set(['note', 'progress', 'blocker', 'verification', 'system'])
+
+const normalizeTaskNote = (note = {}) => ({
+  id: String(note.id || generateId()),
+  timestamp: Number.isFinite(note.timestamp) ? note.timestamp : now(),
+  type: noteTypes.has(note.type) ? note.type : 'note',
+  text: String(note.text || ''),
+  ...(typeof note.author === 'string' && note.author.trim() ? { author: note.author.trim() } : {}),
+})
+
 const normalizeCard = (card = {}) => {
   const normalized = {
     id: String(card.id || generateId()),
@@ -197,10 +212,17 @@ const normalizeCard = (card = {}) => {
     subtasks: Array.isArray(card.subtasks)
       ? card.subtasks.map(normalizeSubtask)
       : [],
+    notes: Array.isArray(card.notes)
+      ? card.notes.map(normalizeTaskNote).filter((note) => note.text.trim())
+      : [],
   }
 
   if (typeof card.description === 'string') normalized.description = card.description
   if (Number.isFinite(card.completedAt)) normalized.completedAt = card.completedAt
+  if (typeof card.owner === 'string' && card.owner.trim()) normalized.owner = card.owner.trim()
+  if (Number.isFinite(card.claimedAt)) normalized.claimedAt = card.claimedAt
+  if (Number.isFinite(card.lastTouchedAt)) normalized.lastTouchedAt = card.lastTouchedAt
+  if (typeof card.blockedReason === 'string' && card.blockedReason.trim()) normalized.blockedReason = card.blockedReason.trim()
 
   return normalized
 }
@@ -244,12 +266,18 @@ export const summarizeTask = (task = {}) => {
     title: task.title,
     priority: task.priority,
     createdAt: task.createdAt,
+    owner: task.owner,
+    claimedAt: task.claimedAt,
+    lastTouchedAt: task.lastTouchedAt,
+    noteCount: Array.isArray(task.notes) ? task.notes.length : 0,
     subtaskCount: subtasks.length,
     completedSubtaskCount: subtasks.filter((subtask) => subtask.completed).length,
   }
 
   const descriptionPreview = previewText(task.description)
+  const blockedReasonPreview = previewText(task.blockedReason)
   if (descriptionPreview) summary.descriptionPreview = descriptionPreview
+  if (blockedReasonPreview) summary.blockedReasonPreview = blockedReasonPreview
   if (Number.isFinite(task.completedAt)) summary.completedAt = task.completedAt
   return summary
 }
@@ -475,6 +503,96 @@ export const findTask = (board, taskId) => {
   throw new Error(`Task not found: ${taskId}`)
 }
 
+const findColumnByCategory = (board, category) => {
+  const column = board.columns.find((item) => item.category === category)
+  if (!column) throw new Error(`Column category not found: ${category}`)
+  return column
+}
+
+const findOptionalColumnByCategory = (board, category) =>
+  board.columns.find((item) => item.category === category) || null
+
+const findTaskByTitle = (board, title, columnId) => {
+  const needle = String(title || '').trim().toLowerCase()
+  if (!needle) return null
+
+  for (const column of board.columns) {
+    if (columnId && column.id !== columnId) continue
+    const task = column.cards.find((item) => String(item.title || '').trim().toLowerCase() === needle)
+    if (task) return { column, task }
+  }
+
+  return null
+}
+
+const touchTask = (task, touchedAt = now()) => {
+  task.lastTouchedAt = touchedAt
+}
+
+const appendNoteToTask = (task, { text, type = 'note', author } = {}) => {
+  const note = normalizeTaskNote({ text, type, author, timestamp: now() })
+  if (!note.text.trim()) throw new Error('Task note text is required.')
+  task.notes = [...(Array.isArray(task.notes) ? task.notes : []), note]
+  touchTask(task, note.timestamp)
+  return note
+}
+
+const applyTaskPatch = (task, { title, description, priority, subtasks, completedAt, owner, blockedReason } = {}) => {
+  if (typeof title === 'string') task.title = title
+  if (typeof description === 'string') task.description = description
+  if (priorities.has(priority)) task.priority = priority
+  if (Array.isArray(subtasks)) task.subtasks = subtasks.map(normalizeSubtask)
+  if (completedAt === null) delete task.completedAt
+  if (Number.isFinite(completedAt)) task.completedAt = completedAt
+  if (typeof owner === 'string') {
+    if (owner.trim()) task.owner = owner.trim()
+    else delete task.owner
+  }
+  if (blockedReason === null) delete task.blockedReason
+  if (typeof blockedReason === 'string') {
+    if (blockedReason.trim()) task.blockedReason = blockedReason.trim()
+    else delete task.blockedReason
+  }
+  touchTask(task)
+}
+
+const moveTaskToColumn = (board, taskId, targetColumn, targetIndex = null) => {
+  const source = findTask(board, taskId)
+  const sourceIndex = source.column.cards.findIndex((task) => task.id === taskId)
+  const [task] = source.column.cards.splice(sourceIndex, 1)
+
+  if (targetColumn.category === 'done' && source.column.category !== 'done') {
+    task.completedAt = now()
+  } else if (targetColumn.category !== 'done' && source.column.category === 'done') {
+    delete task.completedAt
+  }
+
+  const index = Number.isInteger(targetIndex)
+    ? Math.max(0, Math.min(targetIndex, targetColumn.cards.length))
+    : targetColumn.cards.length
+  targetColumn.cards.splice(index, 0, task)
+  touchTask(task)
+  return { task, fromColumnId: source.column.id, toColumnId: targetColumn.id, index }
+}
+
+const taskDigestItem = (board, column, task) => {
+  const blockedReasonPreview = previewText(task.blockedReason)
+  return {
+    boardId: board.id,
+    boardTitle: board.title,
+    columnId: column.id,
+    columnTitle: column.title,
+    columnCategory: column.category,
+    id: task.id,
+    title: task.title,
+    priority: task.priority,
+    owner: task.owner,
+    lastTouchedAt: task.lastTouchedAt,
+    completedAt: task.completedAt,
+    ...(blockedReasonPreview ? { blockedReasonPreview } : {}),
+  }
+}
+
 const taskMatchesFilters = (task, column, { query = '', priority, category } = {}) => {
   const needle = String(query || '').toLowerCase()
   const haystack = `${task.title} ${task.description || ''}`.toLowerCase()
@@ -649,13 +767,14 @@ export const createTask = async ({
   description,
   priority = 'medium',
   subtasks = [],
+  owner,
 }) =>
   mutateState((draft) => {
     const board = findBoard(draft, boardId)
     const column = columnId ? findColumn(board, columnId) : board.columns[0]
     if (!column) throw new Error('No target column exists.')
 
-    const task = normalizeCard({ title, description, priority, subtasks, createdAt: now() })
+    const task = normalizeCard({ title, description, priority, subtasks, owner, createdAt: now(), lastTouchedAt: now() })
     if (column.category === 'done') task.completedAt = now()
     column.cards.push(task)
     return task
@@ -669,38 +788,21 @@ export const updateTask = async ({
   priority,
   subtasks,
   completedAt,
+  owner,
+  blockedReason,
 }) =>
   mutateState((draft) => {
     const board = findBoard(draft, boardId)
     const { task } = findTask(board, taskId)
-    if (typeof title === 'string') task.title = title
-    if (typeof description === 'string') task.description = description
-    if (priorities.has(priority)) task.priority = priority
-    if (Array.isArray(subtasks)) task.subtasks = subtasks.map(normalizeSubtask)
-    if (completedAt === null) delete task.completedAt
-    if (Number.isFinite(completedAt)) task.completedAt = completedAt
+    applyTaskPatch(task, { title, description, priority, subtasks, completedAt, owner, blockedReason })
     return task
   })
 
 export const moveTask = async ({ boardId, taskId, targetColumnId, targetIndex = null }) =>
   mutateState((draft) => {
     const board = findBoard(draft, boardId)
-    const source = findTask(board, taskId)
     const targetColumn = findColumn(board, targetColumnId)
-    const sourceIndex = source.column.cards.findIndex((task) => task.id === taskId)
-    const [task] = source.column.cards.splice(sourceIndex, 1)
-
-    if (targetColumn.category === 'done' && source.column.category !== 'done') {
-      task.completedAt = now()
-    } else if (targetColumn.category !== 'done' && source.column.category === 'done') {
-      delete task.completedAt
-    }
-
-    const index = Number.isInteger(targetIndex)
-      ? Math.max(0, Math.min(targetIndex, targetColumn.cards.length))
-      : targetColumn.cards.length
-    targetColumn.cards.splice(index, 0, task)
-    return { task, fromColumnId: source.column.id, toColumnId: targetColumn.id, index }
+    return moveTaskToColumn(board, taskId, targetColumn, targetIndex)
   })
 
 export const deleteTask = async ({ boardId, taskId }) =>
@@ -728,6 +830,212 @@ export const toggleSubtask = async ({ boardId, taskId, subtaskId, completed }) =
     if (!subtask) throw new Error(`Subtask not found: ${subtaskId}`)
     subtask.completed = typeof completed === 'boolean' ? completed : !subtask.completed
     return subtask
+  })
+
+export const ensureTask = async ({
+  boardId,
+  columnId,
+  title,
+  description,
+  priority,
+  subtasks,
+  owner,
+  updateExisting = true,
+} = {}) =>
+  mutateState((draft) => {
+    const board = findBoard(draft, boardId)
+    const existing = findTaskByTitle(board, title, columnId)
+    if (existing) {
+      if (updateExisting) {
+        applyTaskPatch(existing.task, { description, priority, subtasks, owner })
+      }
+      return { task: existing.task, columnId: existing.column.id, created: false }
+    }
+
+    const column = columnId ? findColumn(board, columnId) : board.columns[0]
+    if (!column) throw new Error('No target column exists.')
+    const task = normalizeCard({ title, description, priority, subtasks, owner, createdAt: now(), lastTouchedAt: now() })
+    column.cards.push(task)
+    return { task, columnId: column.id, created: true }
+  })
+
+export const appendTaskNote = async ({ boardId, taskId, text, type = 'note', author } = {}) =>
+  mutateState((draft) => {
+    const board = findBoard(draft, boardId)
+    const { task } = findTask(board, taskId)
+    const note = appendNoteToTask(task, { text, type, author })
+    return { task, note }
+  })
+
+export const startTask = async ({ boardId, taskId, owner, note } = {}) =>
+  mutateState((draft) => {
+    const board = findBoard(draft, boardId)
+    const targetColumn = findColumnByCategory(board, 'doing')
+    const moved = moveTaskToColumn(board, taskId, targetColumn)
+    if (typeof owner === 'string' && owner.trim()) {
+      moved.task.owner = owner.trim()
+      moved.task.claimedAt = now()
+    }
+    delete moved.task.blockedReason
+    if (typeof note === 'string' && note.trim()) appendNoteToTask(moved.task, { text: note, type: 'progress', author: owner })
+    touchTask(moved.task)
+    return moved
+  })
+
+export const completeTask = async ({ boardId, taskId, verificationNote, author } = {}) =>
+  mutateState((draft) => {
+    const board = findBoard(draft, boardId)
+    const targetColumn = findColumnByCategory(board, 'done')
+    const moved = moveTaskToColumn(board, taskId, targetColumn)
+    moved.task.completedAt = now()
+    delete moved.task.blockedReason
+    if (typeof verificationNote === 'string' && verificationNote.trim()) {
+      appendNoteToTask(moved.task, { text: verificationNote, type: 'verification', author })
+    }
+    touchTask(moved.task)
+    return moved
+  })
+
+export const blockTask = async ({ boardId, taskId, reason, author, moveToBugs = false } = {}) =>
+  mutateState((draft) => {
+    const board = findBoard(draft, boardId)
+    const current = findTask(board, taskId)
+    let moved = { task: current.task, fromColumnId: current.column.id, toColumnId: current.column.id, index: current.column.cards.indexOf(current.task) }
+    if (moveToBugs) {
+      const targetColumn = findOptionalColumnByCategory(board, 'bugs')
+      if (targetColumn) moved = moveTaskToColumn(board, taskId, targetColumn)
+    }
+    moved.task.blockedReason = String(reason || 'Blocked')
+    appendNoteToTask(moved.task, { text: moved.task.blockedReason, type: 'blocker', author })
+    touchTask(moved.task)
+    return moved
+  })
+
+export const reopenTask = async ({ boardId, taskId, targetColumnId, note, author } = {}) =>
+  mutateState((draft) => {
+    const board = findBoard(draft, boardId)
+    const targetColumn = targetColumnId ? findColumn(board, targetColumnId) : findColumnByCategory(board, 'todo')
+    const moved = moveTaskToColumn(board, taskId, targetColumn)
+    delete moved.task.completedAt
+    delete moved.task.blockedReason
+    if (typeof note === 'string' && note.trim()) appendNoteToTask(moved.task, { text: note, type: 'progress', author })
+    touchTask(moved.task)
+    return moved
+  })
+
+export const getAgentDigest = async ({ boardId, owner, limit = 8 } = {}) => {
+  const state = await readState()
+  const boards = boardId ? [findBoard(state, boardId)] : state.boards
+  const pageSize = clampListLimit(limit)
+  const active = []
+  const blocked = []
+  const recent = []
+
+  for (const board of boards) {
+    for (const column of board.columns) {
+      for (const task of column.cards) {
+        if (owner && task.owner !== owner) continue
+        const item = taskDigestItem(board, column, task)
+        if (!task.completedAt && column.category !== 'done' && !task.blockedReason) active.push(item)
+        if (task.blockedReason) blocked.push(item)
+        recent.push(item)
+      }
+    }
+  }
+
+  recent.sort((left, right) => (right.lastTouchedAt || 0) - (left.lastTouchedAt || 0))
+  const nextAction = blocked.length
+    ? `Review blocked task: ${blocked[0].title}`
+    : active.length
+    ? `Continue active task: ${active[0].title}`
+    : 'No active tasks found.'
+
+  return {
+    revision: state.revision,
+    updatedAt: state.updatedAt,
+    summary: summarizeState(state),
+    active: active.slice(0, pageSize),
+    blocked: blocked.slice(0, pageSize),
+    recent: recent.slice(0, pageSize),
+    nextAction,
+  }
+}
+
+const applyTaskChange = (board, change = {}) => {
+  const type = change.type
+  if (type === 'append_note') {
+    const { task } = findTask(board, change.taskId)
+    const note = appendNoteToTask(task, { text: change.text, type: change.noteType || 'note', author: change.author })
+    return { task, note }
+  }
+  if (type === 'set_owner') {
+    const { task } = findTask(board, change.taskId)
+    applyTaskPatch(task, { owner: change.owner })
+    return { task }
+  }
+  if (type === 'set_priority') {
+    const { task } = findTask(board, change.taskId)
+    applyTaskPatch(task, { priority: change.priority })
+    return { task }
+  }
+  if (type === 'move') {
+    const targetColumn = findColumn(board, change.targetColumnId)
+    return moveTaskToColumn(board, change.taskId, targetColumn, change.targetIndex)
+  }
+  if (type === 'start') {
+    const targetColumn = findColumnByCategory(board, 'doing')
+    const moved = moveTaskToColumn(board, change.taskId, targetColumn)
+    if (typeof change.owner === 'string' && change.owner.trim()) {
+      moved.task.owner = change.owner.trim()
+      moved.task.claimedAt = now()
+    }
+    return moved
+  }
+  if (type === 'complete') {
+    const targetColumn = findColumnByCategory(board, 'done')
+    const moved = moveTaskToColumn(board, change.taskId, targetColumn)
+    moved.task.completedAt = now()
+    delete moved.task.blockedReason
+    if (typeof change.verificationNote === 'string' && change.verificationNote.trim()) {
+      appendNoteToTask(moved.task, { text: change.verificationNote, type: 'verification', author: change.author })
+    }
+    return moved
+  }
+  if (type === 'block') {
+    const current = findTask(board, change.taskId)
+    let result = { task: current.task }
+    if (change.moveToBugs) {
+      const targetColumn = findColumnByCategory(board, 'bugs')
+      result = moveTaskToColumn(board, change.taskId, targetColumn)
+    }
+    result.task.blockedReason = String(change.reason || 'Blocked')
+    appendNoteToTask(result.task, { text: result.task.blockedReason, type: 'blocker', author: change.author })
+    return result
+  }
+  if (type === 'reopen') {
+    const targetColumn = change.targetColumnId ? findColumn(board, change.targetColumnId) : findColumnByCategory(board, 'todo')
+    const moved = moveTaskToColumn(board, change.taskId, targetColumn)
+    delete moved.task.completedAt
+    delete moved.task.blockedReason
+    return moved
+  }
+  throw new Error(`Unsupported task change type: ${type}`)
+}
+
+export const applyTaskChanges = async ({ boardId, changes = [] } = {}) =>
+  mutateState((draft) => {
+    const board = findBoard(draft, boardId)
+    const changed = []
+    const failed = []
+    for (const [index, change] of (Array.isArray(changes) ? changes : []).entries()) {
+      try {
+        const result = applyTaskChange(board, change)
+        changed.push({ index, type: change.type, task: summarizeTask(result.task) })
+      } catch (error) {
+        failed.push({ index, type: change?.type, message: error instanceof Error ? error.message : String(error) })
+      }
+    }
+    return { changed, failed }
   })
 
 export const searchTasks = async (args = {}) => listTasks(args)

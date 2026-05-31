@@ -1,20 +1,12 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, BarChart3, Terminal } from 'lucide-react'
-import type { Board, McpMetrics, McpStatus, StorageMode } from '../../types'
+import { ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react'
+import type { Board } from '../../types'
 import { ProjectStatistics } from '../stats/ProjectStatistics'
-import { McpActivityLog } from '../mcp/McpActivityLog'
-import type { LogEntry } from '../mcp/McpActivityLog'
 
 type SidebarProps = {
   board: Board | null
   deletedCount: number
   lastActivity: number
-  logs?: LogEntry[]
-  mcpStatus?: McpStatus | null
-  mcpMetrics?: McpMetrics
-  storageMode?: StorageMode
-  syncError?: string | null
-  onClearLogs?: () => void
   className?: string
 }
 
@@ -22,12 +14,6 @@ export const Sidebar = ({
   board,
   deletedCount,
   lastActivity,
-  logs,
-  mcpStatus,
-  mcpMetrics,
-  storageMode,
-  syncError,
-  onClearLogs,
   className = '',
 }: SidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -53,31 +39,15 @@ export const Sidebar = ({
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary" title="Statistiken">
             <BarChart3 size={20} />
           </div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-emerald-400 border border-border" title="MCP Logs">
-            <Terminal size={18} />
-          </div>
         </div>
       ) : (
         // Expanded View
-        <div className="flex flex-col h-full p-4 gap-4 overflow-hidden">
-          {/* Top Section - Project Statistics */}
-          <div className="flex-[0.9] min-h-0">
+        <div className="flex h-full flex-col p-4 overflow-hidden">
+          <div className="min-h-0 flex-1">
             <ProjectStatistics
               board={board}
               deletedCount={deletedCount}
               lastActivity={lastActivity}
-            />
-          </div>
-
-          {/* Bottom Section - MCP Activity Log */}
-          <div className="shrink-0">
-            <McpActivityLog
-              logs={logs}
-              mcpStatus={mcpStatus}
-              mcpMetrics={mcpMetrics}
-              storageMode={storageMode}
-              syncError={syncError}
-              onClear={onClearLogs}
             />
           </div>
         </div>

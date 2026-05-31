@@ -1,6 +1,10 @@
 import {
   addSubtask,
   appendMcpMetric,
+  appendTaskNote,
+  applyTaskChanges,
+  blockTask,
+  completeTask,
   createBoard,
   createColumn,
   createTask,
@@ -8,6 +12,8 @@ import {
   deleteBoard,
   deleteColumn,
   deleteTask,
+  ensureTask,
+  getAgentDigest,
   getBoardSummary,
   getTask,
   listColumns,
@@ -15,7 +21,9 @@ import {
   moveTask,
   readState,
   replaceBoards,
+  reopenTask,
   searchTasks,
+  startTask,
   summarizeBoard,
   summarizeColumn,
   summarizeState,
@@ -81,10 +89,22 @@ const taskFieldsProp = () => arrayProp('Optional task fields to return. Supporte
     'priority',
     'createdAt',
     'completedAt',
+    'owner',
+    'claimedAt',
+    'lastTouchedAt',
+    'blockedReasonPreview',
+    'noteCount',
     'descriptionPreview',
     'subtaskCount',
     'completedSubtaskCount',
   ],
+})
+
+const compactMoveResult = ({ state, result }) => okResult(state, {
+  fromColumnId: result.fromColumnId,
+  toColumnId: result.toColumnId,
+  index: result.index,
+  task: summarizeTask(result.task),
 })
 
 export const toolDefinitions = [
@@ -226,13 +246,14 @@ export const toolDefinitions = [
   },
   {
     name: 'create_task',
-    description: 'Create a task in a column.',
+    description: 'Create a task in a column. Agents should prefer ensure_task to avoid duplicate TODOs.',
     inputSchema: objectSchema({
       boardId: stringProp('Board id. Omit only if you want the first board.'),
       columnId: stringProp('Target column id. Omit to use the first column.'),
       title: stringProp('Task title.'),
       description: stringProp('Task description.'),
       priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+      owner: stringProp('Optional owner or agent name.'),
       subtasks: arrayProp('Optional subtasks.', objectSchema({
         title: stringProp('Subtask title.'),
         completed: booleanProp('Completion state.'),
@@ -242,17 +263,105 @@ export const toolDefinitions = [
   },
   {
     name: 'update_task',
-    description: 'Update task title, description, priority, subtasks, or completion timestamp.',
+    description: 'Update task fields. Do not use for progress history; use append_task_note instead.',
     inputSchema: objectSchema({
       boardId: stringProp('Board id. Omit only if you want the first board.'),
       taskId: stringProp('Task id.'),
       title: stringProp('New task title.'),
       description: stringProp('New task description.'),
       priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+      owner: stringProp('Optional owner or agent name. Empty string clears it.'),
+      blockedReason: stringProp('Optional blocked reason. Empty string clears it.'),
       subtasks: arrayProp('Full replacement subtask array.'),
       completedAt: nullableNumberProp('Unix timestamp in milliseconds, or null to clear.'),
     }, ['taskId']),
     handler: async (args) => compactTaskResult(await updateTask(args)),
+  },
+  {
+    name: 'ensure_task',
+    description: 'Agent-safe idempotent create/update by exact title. Prefer this over create_task for TODO tracking.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Board id. Omit only if you want the first board.'),
+      columnId: stringProp('Optional column id to scope lookup and creation.'),
+      title: stringProp('Task title to find or create.'),
+      description: stringProp('Optional description to set on create or update.'),
+      priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+      owner: stringProp('Optional owner or agent name.'),
+      updateExisting: booleanProp('When false, existing matching task is returned without updates. Defaults to true.'),
+      subtasks: arrayProp('Optional subtasks.', objectSchema({
+        title: stringProp('Subtask title.'),
+        completed: booleanProp('Completion state.'),
+      }, ['title'])),
+    }, ['title']),
+    handler: async (args) => {
+      const { state, result } = await ensureTask(args)
+      return okResult(state, {
+        created: result.created,
+        columnId: result.columnId,
+        task: summarizeTask(result.task),
+      })
+    },
+  },
+  {
+    name: 'append_task_note',
+    description: 'Append progress, blocker, verification, or comment history without overwriting the task description.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Board id. Omit only if you want the first board.'),
+      taskId: stringProp('Task id.'),
+      text: stringProp('Note text. Required.'),
+      type: { type: 'string', enum: ['note', 'progress', 'blocker', 'verification', 'system'] },
+      author: stringProp('Optional author or agent name.'),
+    }, ['taskId', 'text']),
+    handler: async (args) => {
+      const { state, result } = await appendTaskNote(args)
+      return okResult(state, { note: result.note, task: summarizeTask(result.task) })
+    },
+  },
+  {
+    name: 'start_task',
+    description: 'Claim and move a task to the doing column by category, setting owner/claimedAt/lastTouchedAt.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Board id. Omit only if you want the first board.'),
+      taskId: stringProp('Task id.'),
+      owner: stringProp('Owner or agent name.'),
+      note: stringProp('Optional progress note.'),
+    }, ['taskId']),
+    handler: async (args) => compactMoveResult(await startTask(args)),
+  },
+  {
+    name: 'complete_task',
+    description: 'Move a task to done after real verification. Add verificationNote when tests/smoke checks were run.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Board id. Omit only if you want the first board.'),
+      taskId: stringProp('Task id.'),
+      verificationNote: stringProp('Optional verification note, e.g. tests or manual smoke result.'),
+      author: stringProp('Optional author or agent name.'),
+    }, ['taskId']),
+    handler: async (args) => compactMoveResult(await completeTask(args)),
+  },
+  {
+    name: 'block_task',
+    description: 'Mark a task blocked, append a blocker note, and optionally move it to the bugs column.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Board id. Omit only if you want the first board.'),
+      taskId: stringProp('Task id.'),
+      reason: stringProp('Blocked reason.'),
+      author: stringProp('Optional author or agent name.'),
+      moveToBugs: booleanProp('When true, move the task to the bugs column category.'),
+    }, ['taskId', 'reason']),
+    handler: async (args) => compactMoveResult(await blockTask(args)),
+  },
+  {
+    name: 'reopen_task',
+    description: 'Reopen a completed or blocked task, clearing completedAt/blockedReason and moving to todo or target column.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Board id. Omit only if you want the first board.'),
+      taskId: stringProp('Task id.'),
+      targetColumnId: stringProp('Optional target column id. Defaults to the todo column category.'),
+      note: stringProp('Optional reopen note.'),
+      author: stringProp('Optional author or agent name.'),
+    }, ['taskId']),
+    handler: async (args) => compactMoveResult(await reopenTask(args)),
   },
   {
     name: 'move_task',
@@ -306,6 +415,41 @@ export const toolDefinitions = [
       completed: booleanProp('Optional explicit completion state.'),
     }, ['taskId', 'subtaskId']),
     handler: async (args) => compactSubtaskResult(await toggleSubtask(args)),
+  },
+  {
+    name: 'get_agent_digest',
+    description: 'Compact agent TODO overview: board counts, active tasks, blocked tasks, recent touched tasks, and next action.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Optional board id. Omit to digest all boards.'),
+      owner: stringProp('Optional owner filter.'),
+      limit: numberProp('Maximum items per section. Defaults to 8, maximum 100.'),
+    }),
+    handler: async (args) => getAgentDigest(args),
+  },
+  {
+    name: 'apply_task_changes',
+    description: 'Batch small agent task updates in one compact call. Supports append_note, set_owner, set_priority, start, complete, block, reopen, move.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Board id. Omit only if you want the first board.'),
+      changes: arrayProp('Task changes to apply.', objectSchema({
+        type: { type: 'string', enum: ['append_note', 'set_owner', 'set_priority', 'start', 'complete', 'block', 'reopen', 'move'] },
+        taskId: stringProp('Task id.'),
+        text: stringProp('Note text for append_note.'),
+        noteType: { type: 'string', enum: ['note', 'progress', 'blocker', 'verification', 'system'] },
+        author: stringProp('Optional author or agent name.'),
+        owner: stringProp('Owner for set_owner or start.'),
+        priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+        reason: stringProp('Blocked reason for block.'),
+        moveToBugs: booleanProp('When true for block, move to the bugs column category.'),
+        verificationNote: stringProp('Verification note for complete.'),
+        targetColumnId: stringProp('Target column id for move or reopen.'),
+        targetIndex: numberProp('Optional zero-based target index.'),
+      }, ['type', 'taskId'])),
+    }, ['changes']),
+    handler: async (args) => {
+      const { state, result } = await applyTaskChanges(args)
+      return okResult(state, result)
+    },
   },
   {
     name: 'search_tasks',

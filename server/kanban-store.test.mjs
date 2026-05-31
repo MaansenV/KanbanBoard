@@ -267,3 +267,128 @@ test('appendMcpMetric stores token estimates and totals', async () => {
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test('ensureTask is idempotent by title and preserves a single task', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'kanban-store-'))
+  const dataFile = join(dir, 'kanban.json')
+  const statusFile = join(dir, 'mcp-status.json')
+
+  try {
+    const { ensureTask, readState } = await importStore(dataFile, statusFile)
+
+    const first = await ensureTask({ title: 'Agent TODO', description: 'First body', owner: 'codex' })
+    const second = await ensureTask({ title: 'Agent TODO', description: 'Updated body', owner: 'codex' })
+    const state = await readState()
+    const tasks = state.boards[0].columns.flatMap((column) => column.cards)
+
+    assert.equal(first.result.created, true)
+    assert.equal(second.result.created, false)
+    assert.equal(tasks.length, 1)
+    assert.equal(tasks[0].description, 'Updated body')
+    assert.equal(tasks[0].owner, 'codex')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('appendTaskNote keeps description and appends chronological notes', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'kanban-store-'))
+  const dataFile = join(dir, 'kanban.json')
+  const statusFile = join(dir, 'mcp-status.json')
+
+  try {
+    const { createTask, appendTaskNote, getTask } = await importStore(dataFile, statusFile)
+    const created = await createTask({ title: 'Note target', description: 'Stable description' })
+
+    await appendTaskNote({ taskId: created.result.id, text: 'Started', type: 'progress', author: 'agent-a' })
+    await appendTaskNote({ taskId: created.result.id, text: 'Verified', type: 'verification', author: 'agent-a' })
+    const detail = await getTask({ taskId: created.result.id })
+
+    assert.equal(detail.task.description, 'Stable description')
+    assert.equal(detail.task.notes.length, 2)
+    assert.equal(detail.task.notes[0].text, 'Started')
+    assert.equal(detail.task.notes[1].type, 'verification')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('agent status tools move tasks and set metadata', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'kanban-store-'))
+  const dataFile = join(dir, 'kanban.json')
+  const statusFile = join(dir, 'mcp-status.json')
+
+  try {
+    const { blockTask, completeTask, createTask, getTask, reopenTask, startTask } = await importStore(dataFile, statusFile)
+    const created = await createTask({ title: 'Lifecycle task' })
+
+    const started = await startTask({ taskId: created.result.id, owner: 'codex', note: 'Taking this' })
+    assert.equal(started.result.toColumnId, started.state.boards[0].columns.find((column) => column.category === 'doing').id)
+    assert.equal(started.result.task.owner, 'codex')
+    assert.ok(Number.isFinite(started.result.task.claimedAt))
+
+    const blocked = await blockTask({ taskId: created.result.id, reason: 'Need input', moveToBugs: true })
+    assert.equal(blocked.result.toColumnId, started.result.toColumnId)
+    assert.equal(blocked.result.task.blockedReason, 'Need input')
+
+    const reopened = await reopenTask({ taskId: created.result.id })
+    assert.equal(reopened.result.toColumnId, reopened.state.boards[0].columns.find((column) => column.category === 'todo').id)
+    assert.equal(reopened.result.task.blockedReason, undefined)
+
+    const completed = await completeTask({ taskId: created.result.id, verificationNote: 'npm test passed' })
+    const detail = await getTask({ taskId: created.result.id })
+    assert.equal(completed.result.toColumnId, completed.state.boards[0].columns.find((column) => column.category === 'done').id)
+    assert.ok(Number.isFinite(detail.task.completedAt))
+    assert.equal(detail.task.notes.at(-1).type, 'verification')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('getAgentDigest stays compact and omits full descriptions', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'kanban-store-'))
+  const dataFile = join(dir, 'kanban.json')
+  const statusFile = join(dir, 'mcp-status.json')
+
+  try {
+    const { blockTask, createTask, getAgentDigest } = await importStore(dataFile, statusFile)
+    const created = await createTask({ title: 'Digest task', description: 'This full description should not be present.', owner: 'codex' })
+    await blockTask({ taskId: created.result.id, reason: 'Waiting for review' })
+
+    const digest = await getAgentDigest({ owner: 'codex', limit: 5 })
+    const serialized = JSON.stringify(digest)
+
+    assert.equal(digest.blocked.length, 1)
+    assert.equal(digest.blocked[0].blockedReasonPreview, 'Waiting for review')
+    assert.equal(serialized.includes('This full description should not be present.'), false)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('applyTaskChanges reports changed and failed entries', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'kanban-store-'))
+  const dataFile = join(dir, 'kanban.json')
+  const statusFile = join(dir, 'mcp-status.json')
+
+  try {
+    const { applyTaskChanges, createTask, getTask } = await importStore(dataFile, statusFile)
+    const created = await createTask({ title: 'Batch target' })
+
+    const result = await applyTaskChanges({
+      changes: [
+        { type: 'set_owner', taskId: created.result.id, owner: 'codex' },
+        { type: 'append_note', taskId: created.result.id, text: 'Batch note', noteType: 'progress' },
+        { type: 'set_priority', taskId: 'missing-task', priority: 'high' },
+      ],
+    })
+    const detail = await getTask({ taskId: created.result.id })
+
+    assert.equal(result.result.changed.length, 2)
+    assert.equal(result.result.failed.length, 1)
+    assert.equal(detail.task.owner, 'codex')
+    assert.equal(detail.task.notes[0].text, 'Batch note')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})

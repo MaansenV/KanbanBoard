@@ -17,3 +17,20 @@ test('get_board_state requires explicit expensive-read confirmation', async () =
     /confirmExpensive: true/,
   )
 })
+
+test('agent TODO tools are registered', () => {
+  const names = new Set(toolDefinitions.map((tool) => tool.name))
+
+  for (const name of [
+    'ensure_task',
+    'append_task_note',
+    'start_task',
+    'complete_task',
+    'block_task',
+    'reopen_task',
+    'get_agent_digest',
+    'apply_task_changes',
+  ]) {
+    assert.equal(names.has(name), true, `${name} should be registered`)
+  }
+})

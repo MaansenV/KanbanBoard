@@ -18,6 +18,14 @@ export type Subtask = {
   completed: boolean
 }
 
+export type TaskNote = {
+  id: string
+  timestamp: number
+  type: 'note' | 'progress' | 'blocker' | 'verification' | 'system'
+  text: string
+  author?: string
+}
+
 export type Card = {
   id: string
   title: string
@@ -25,6 +33,11 @@ export type Card = {
   priority: PriorityKey
   createdAt?: number
   completedAt?: number
+  owner?: string
+  claimedAt?: number
+  lastTouchedAt?: number
+  blockedReason?: string
+  notes?: TaskNote[]
   subtasks?: Subtask[]
 }
 
