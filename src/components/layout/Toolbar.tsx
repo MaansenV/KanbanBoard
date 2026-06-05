@@ -53,11 +53,13 @@ export const Toolbar = ({
           ? 'bg-sky-500'
           : key === 'doing'
             ? 'bg-amber-500'
-            : key === 'done'
-              ? 'bg-emerald-500'
-              : key === 'bugs'
-                ? 'bg-rose-500'
-                : 'bg-slate-500',
+            : key === 'review'
+              ? 'bg-indigo-500'
+              : key === 'done'
+                ? 'bg-emerald-500'
+                : key === 'bugs'
+                  ? 'bg-rose-500'
+                  : 'bg-slate-500',
     })),
   ]
 

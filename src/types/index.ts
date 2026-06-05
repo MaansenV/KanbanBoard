@@ -41,7 +41,7 @@ export type Card = {
   subtasks?: Subtask[]
 }
 
-export type CategoryKey = 'todo' | 'doing' | 'done' | 'bugs' | 'none'
+export type CategoryKey = 'todo' | 'doing' | 'review' | 'done' | 'bugs' | 'none'
 
 export type Column = {
   id: string
@@ -169,6 +169,58 @@ export type CommandPaletteAction = {
   action: () => void
 }
 
+// ── Agent Dispatch Types ───────────────────────────────────────────
+
+export type AgentType = 'opencode'
+
+export type AgentStatus = 'idle' | 'busy'
+
+export type Agent = {
+  id: string
+  name: string
+  type: AgentType
+  registeredAt: number
+  lastSeen: number
+  status: AgentStatus
+}
+
+export type DispatchStatus =
+  | 'pending'
+  | 'dispatched'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export type TaskDispatch = {
+  id: string
+  agentId: string
+  taskId: string
+  boardId?: string
+  prompt: string
+  status: DispatchStatus
+  createdAt: number
+  dispatchedAt: number | null
+  completedAt: number | null
+  cancelledAt: number | null
+  failedAt: number | null
+  result: string | null
+  error: string | null
+  author: string
+}
+
+export type AgentsApiState = {
+  agents: Agent[]
+  revision: number
+  updatedAt: number
+}
+
+export type DispatchesApiState = {
+  dispatches: TaskDispatch[]
+  revision: number
+  updatedAt: number
+  total: number
+}
+
 // ── Constants ───────────────────────────────────────────────────────
 
 export const PRIORITIES: Record<PriorityKey, PriorityConfig & { icon: React.ReactNode }> = {
@@ -205,6 +257,7 @@ export const PRIORITIES: Record<PriorityKey, PriorityConfig & { icon: React.Reac
 export const CATEGORY_LABELS: Record<CategoryKey, string> = {
   todo: 'Zu erledigen',
   doing: 'In Bearbeitung',
+  review: 'Zur Prüfung',
   done: 'Erledigt',
   bugs: 'Bugs',
   none: 'Keine',
@@ -217,4 +270,12 @@ export const SORT_LABELS: Record<CardSortMode, string> = {
   newest: 'Neueste',
   oldest: 'Älteste',
   title: 'Titel A-Z',
+}
+
+export const DISPATCH_STATUS_LABELS: Record<DispatchStatus, string> = {
+  pending: 'Wartend',
+  dispatched: 'Zugestellt',
+  completed: 'Erledigt',
+  failed: 'Fehlgeschlagen',
+  cancelled: 'Abgebrochen',
 }

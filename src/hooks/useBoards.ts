@@ -179,6 +179,20 @@ export const useBoards = (initialBoards: Board[] = []) => {
     return deletedInfo
   }
 
+  const clearColumnCards = (boardId: string, columnId: string): Card[] | null => {
+    let removed: Card[] | null = null
+    setBoards((prev) => {
+      const next = deepClone(prev)
+      const board = next.find((b) => b.id === boardId)
+      const column = board?.columns.find((c) => c.id === columnId)
+      if (!column || column.cards.length === 0) return prev
+      removed = column.cards.map((c) => deepClone(c))
+      column.cards = []
+      return next
+    })
+    return removed
+  }
+
   const undoCardDeletion = (
     boardId: string,
     columnId: string,
@@ -340,6 +354,7 @@ export const useBoards = (initialBoards: Board[] = []) => {
     createCard,
     updateCard,
     deleteCard,
+    clearColumnCards,
     undoCardDeletion,
     dropCard,
     createSubtask,

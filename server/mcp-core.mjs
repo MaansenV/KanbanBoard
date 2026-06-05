@@ -22,6 +22,7 @@ import {
   readState,
   replaceBoards,
   reopenTask,
+  reviewTask,
   searchTasks,
   startTask,
   summarizeBoard,
@@ -33,6 +34,15 @@ import {
   updateColumn,
   updateTask,
 } from './kanban-store.mjs'
+import {
+  ensureDefaultAgent,
+  registerAgent,
+  listAgents,
+  createDispatch,
+  listDispatches,
+  completeDispatch,
+  cancelDispatch,
+} from './dispatch-store.mjs'
 
 export const textResult = (value) => ({
   content: [
@@ -163,7 +173,7 @@ export const toolDefinitions = [
       columnId: stringProp('Optional column id.'),
       query: stringProp('Optional text to match in title or description.'),
       priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-      category: { type: 'string', enum: ['todo', 'doing', 'done', 'bugs', 'none'] },
+      category: { type: 'string', enum: ['todo', 'doing', 'review', 'done', 'bugs', 'none'] },
       limit: numberProp('Maximum tasks to return. Defaults to 25, maximum 100.'),
       cursor: numberProp('Zero-based pagination cursor from a prior response.'),
       includeFullTask: booleanProp('When true, returns full task objects. Use get_task instead when you only need one task.'),
@@ -216,7 +226,7 @@ export const toolDefinitions = [
       boardId: stringProp('Board id. Omit only if you want the first board.'),
       title: stringProp('Column title.'),
       color: stringProp('Tailwind color class, e.g. bg-blue-500.'),
-      category: { type: 'string', enum: ['todo', 'doing', 'done', 'bugs', 'none'] },
+      category: { type: 'string', enum: ['todo', 'doing', 'review', 'done', 'bugs', 'none'] },
     }, ['title']),
     handler: async (args) => compactColumnResult(await createColumn(args)),
   },
@@ -228,7 +238,7 @@ export const toolDefinitions = [
       columnId: stringProp('Column id.'),
       title: stringProp('New column title.'),
       color: stringProp('Tailwind color class, e.g. bg-emerald-500.'),
-      category: { type: 'string', enum: ['todo', 'doing', 'done', 'bugs', 'none'] },
+      category: { type: 'string', enum: ['todo', 'doing', 'review', 'done', 'bugs', 'none'] },
     }, ['columnId']),
     handler: async (args) => compactColumnResult(await updateColumn(args)),
   },
@@ -340,6 +350,17 @@ export const toolDefinitions = [
     handler: async (args) => compactMoveResult(await completeTask(args)),
   },
   {
+    name: 'review_task',
+    description: 'Move a task to ready to review after implementation is finished. Add reviewNote when ready for human or automated review.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Board id. Omit only if you want the first board.'),
+      taskId: stringProp('Task id.'),
+      reviewNote: stringProp('Optional review note, e.g. implementation details or review checklist.'),
+      author: stringProp('Optional author or agent name.'),
+    }, ['taskId']),
+    handler: async (args) => compactMoveResult(await reviewTask(args)),
+  },
+  {
     name: 'block_task',
     description: 'Mark a task blocked, append a blocker note, and optionally move it to the bugs column.',
     inputSchema: objectSchema({
@@ -428,11 +449,11 @@ export const toolDefinitions = [
   },
   {
     name: 'apply_task_changes',
-    description: 'Batch small agent task updates in one compact call. Supports append_note, set_owner, set_priority, start, complete, block, reopen, move.',
+    description: 'Batch small agent task updates in one compact call. Supports append_note, set_owner, set_priority, start, complete, review, block, reopen, move.',
     inputSchema: objectSchema({
       boardId: stringProp('Board id. Omit only if you want the first board.'),
       changes: arrayProp('Task changes to apply.', objectSchema({
-        type: { type: 'string', enum: ['append_note', 'set_owner', 'set_priority', 'start', 'complete', 'block', 'reopen', 'move'] },
+        type: { type: 'string', enum: ['append_note', 'set_owner', 'set_priority', 'start', 'complete', 'review', 'block', 'reopen', 'move'] },
         taskId: stringProp('Task id.'),
         text: stringProp('Note text for append_note.'),
         noteType: { type: 'string', enum: ['note', 'progress', 'blocker', 'verification', 'system'] },
@@ -442,6 +463,7 @@ export const toolDefinitions = [
         reason: stringProp('Blocked reason for block.'),
         moveToBugs: booleanProp('When true for block, move to the bugs column category.'),
         verificationNote: stringProp('Verification note for complete.'),
+        reviewNote: stringProp('Review note for review.'),
         targetColumnId: stringProp('Target column id for move or reopen.'),
         targetIndex: numberProp('Optional zero-based target index.'),
       }, ['type', 'taskId'])),
@@ -458,13 +480,76 @@ export const toolDefinitions = [
       boardId: stringProp('Optional board id.'),
       query: stringProp('Text to search in title and description.'),
       priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-      category: { type: 'string', enum: ['todo', 'doing', 'done', 'bugs', 'none'] },
+      category: { type: 'string', enum: ['todo', 'doing', 'review', 'done', 'bugs', 'none'] },
       limit: numberProp('Maximum tasks to return. Defaults to 25, maximum 100.'),
       cursor: numberProp('Zero-based pagination cursor from a prior response.'),
       includeFullTask: booleanProp('When true, returns full task objects. Prefer get_task when you only need one full task.'),
       fields: taskFieldsProp(),
     }),
     handler: async (args) => searchTasks(args),
+  },
+  // ── Agent Dispatch Tools ──────────────────────────────────────────
+  {
+    name: 'register_agent',
+    description: 'Register or refresh the OpenCode orchestrator agent for task dispatch.',
+    inputSchema: objectSchema({
+      id: stringProp('Agent id. Defaults to orchestrator.'),
+      name: stringProp('Display name. Defaults to Orchestrator.'),
+      type: { type: 'string', enum: ['opencode'] },
+      status: { type: 'string', enum: ['idle', 'busy'] },
+    }),
+    handler: async (args) => registerAgent(args),
+  },
+  {
+    name: 'list_agents',
+    description: 'List registered dispatch agents and their current status.',
+    inputSchema: objectSchema(),
+    handler: async () => listAgents(),
+  },
+  {
+    name: 'dispatch_task',
+    description: 'Create a queued dispatch for a task. The prompt is stored as dispatch metadata and appended as a task note without replacing task content.',
+    inputSchema: objectSchema({
+      boardId: stringProp('Board id. Omit only if you want the first board.'),
+      taskId: stringProp('Existing task id.'),
+      agentId: stringProp('Target agent id. Defaults to orchestrator.'),
+      prompt: stringProp('Additional instruction prompt for the agent.'),
+      author: stringProp('Optional author. Defaults to user.'),
+    }, ['taskId', 'prompt']),
+    handler: async (args) => createDispatch(args),
+  },
+  {
+    name: 'list_dispatches',
+    description: 'List queued dispatches. Agents use this to poll pending work.',
+    inputSchema: objectSchema({
+      agentId: stringProp('Optional agent id filter.'),
+      taskId: stringProp('Optional task id filter.'),
+      status: { type: 'string', enum: ['pending', 'dispatched', 'completed', 'failed', 'cancelled'] },
+      includeCompleted: booleanProp('When false, terminal dispatches are excluded.'),
+      markDispatched: booleanProp('When true, pending results are marked as dispatched. Use for agent polling.'),
+      limit: numberProp('Maximum dispatches to return. Defaults to 50.'),
+    }),
+    handler: async (args) => listDispatches(args),
+  },
+  {
+    name: 'complete_dispatch',
+    description: 'Mark a dispatch as completed or failed and optionally append the result to the task history.',
+    inputSchema: objectSchema({
+      dispatchId: stringProp('Dispatch id.'),
+      result: stringProp('Result, summary, or error message.'),
+      success: booleanProp('When false, marks the dispatch as failed. Defaults to true.'),
+    }, ['dispatchId']),
+    handler: async (args) => completeDispatch(args),
+  },
+  {
+    name: 'cancel_dispatch',
+    description: 'Cancel a pending or dispatched task dispatch.',
+    inputSchema: objectSchema({
+      dispatchId: stringProp('Dispatch id.'),
+      reason: stringProp('Optional cancellation reason.'),
+      author: stringProp('Optional author.'),
+    }, ['dispatchId']),
+    handler: async (args) => cancelDispatch(args),
   },
 ]
 
@@ -490,13 +575,17 @@ export const handleJsonRpcMessage = async (message) => {
 
   try {
     if (message.method === 'initialize') {
+      // Auto-register default agent on MCP connect
+      await ensureDefaultAgent({ touch: true }).catch((error) =>
+        console.error('Default agent registration failed:', error),
+      )
       return {
         jsonrpc: '2.0',
         id: message.id,
         result: {
           protocolVersion: message.params?.protocolVersion || '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: 'kanban-board', version: '0.1.0' },
+          serverInfo: { name: 'kanban-board', version: '0.2.0' },
         },
       }
     }

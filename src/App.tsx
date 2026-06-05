@@ -23,6 +23,8 @@ import { useUndoDelete } from './hooks/useUndoDelete'
 import { useFoldedTasks } from './hooks/useFoldedTasks'
 import { useMcpStatus } from './hooks/useMcpStatus'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
+import { useAgents } from './hooks/useAgents'
+import { useDispatches } from './hooks/useDispatches'
 
 const App = () => {
   const [modal, setModal] = useState<ModalState>({ type: null, data: null })
@@ -47,6 +49,7 @@ const App = () => {
     createCard,
     updateCard,
     deleteCard,
+    clearColumnCards,
     undoCardDeletion,
     dropCard,
     toggleSubtask,
@@ -65,6 +68,8 @@ const App = () => {
 
   const { darkMode, toggleTheme } = useTheme()
   const mcpStatus = useMcpStatus(storageMode)
+  const agentsState = useAgents(storageMode)
+  const dispatchState = useDispatches(storageMode)
   const { dragState, handleDragStart, handleDragEnd } = useDragAndDrop()
   const { deletedTaskUndo, setDeletedTaskUndo } = useUndoDelete()
   const { foldedTaskIds, toggleFold } = useFoldedTasks()
@@ -96,9 +101,24 @@ const App = () => {
     onToggleTheme: toggleTheme,
     onEscape: () => {
       setIsCommandPaletteOpen(false)
-      setModal({ type: null })
+      setModal({ type: null, data: null })
     },
   })
+
+  // Helper: close modal and stop dispatch polling
+  const closeModal = () => {
+    dispatchState.stopPolling()
+    setModal({ type: null, data: null })
+  }
+
+  // Helper: open edit card modal and load dispatches
+  const openEditCard = (columnId: string, card: Card) => {
+    setModal({ type: 'editCard', data: { colId: columnId, card } })
+    if (storageMode === 'api') {
+      void dispatchState.loadDispatchesForTask(card.id)
+      dispatchState.startPolling(card.id)
+    }
+  }
 
   // Export / Import
   const handleExport = () => {
@@ -124,7 +144,7 @@ const App = () => {
 
   const handleDeleteConfirm = () => {
     if (modal.type !== 'deleteConfirm' || !modal.data) return
-    const { type, id, parentId } = modal.data as { type: 'board' | 'column' | 'card'; id: string; parentId?: string }
+    const { type, id, parentId } = modal.data as { type: 'board' | 'column' | 'card' | 'columnCards'; id: string; parentId?: string }
     if (type === 'board') {
       deleteBoard(id)
     } else if (type === 'column') {
@@ -141,8 +161,10 @@ const App = () => {
         })
         setDeletedCount((prev) => prev + 1)
       }
+    } else if (type === 'columnCards') {
+      clearColumnCards(activeBoardId!, id)
     }
-    setModal({ type: null })
+    closeModal()
     setLastActivity(Date.now())
   }
 
@@ -221,7 +243,7 @@ const App = () => {
           label: `Aufgabe: ${card.title}`,
           description: `In Spalte "${col.title}" · Priorität: ${PRIORITIES[card.priority]?.label}`,
           category: 'task',
-          action: () => setModal({ type: 'editCard', data: { colId: col.id, card } }),
+          action: () => openEditCard(col.id, card),
         })
       })
     })
@@ -307,7 +329,7 @@ const App = () => {
                       hasActiveFilters={hasActiveFilters}
                       foldedTaskIds={foldedTaskIds}
                       onFoldToggle={toggleFold}
-                      onEditCard={(columnId, card) => setModal({ type: 'editCard', data: { colId: columnId, card } })}
+                      onEditCard={(columnId, card) => openEditCard(columnId, card)}
                       onCopyCard={() => {}}
                       onDeleteCard={(columnId, cardId) => {
                         const c = activeBoard.columns.find((x) => x.id === columnId)
@@ -331,6 +353,15 @@ const App = () => {
                           setModal({
                             type: 'deleteConfirm',
                             data: { type: 'column', id: columnId, name: c.title },
+                          })
+                        }
+                      }}
+                      onClearColumn={(columnId) => {
+                        const c = activeBoard.columns.find((x) => x.id === columnId)
+                        if (c && c.cards.length > 0) {
+                          setModal({
+                            type: 'deleteConfirm',
+                            data: { type: 'columnCards', id: columnId, name: c.title, cardCount: c.cards.length },
                           })
                         }
                       }}
@@ -386,7 +417,7 @@ const App = () => {
         isOpen={modal.type === 'createBoard' || modal.type === 'editBoard'}
         mode={modal.type === 'createBoard' ? 'create' : 'edit'}
         initialData={modal.data?.board as Board | undefined}
-        onClose={() => setModal({ type: null })}
+        onClose={() => closeModal()}
         onSubmit={({ title }) => {
           if (!title.trim()) return
           if (modal.type === 'createBoard') {
@@ -395,7 +426,7 @@ const App = () => {
             const boardId = (modal.data.board as Board).id
             updateBoard(boardId, title)
           }
-          setModal({ type: null })
+          closeModal()
           setLastActivity(Date.now())
         }}
       />
@@ -404,7 +435,7 @@ const App = () => {
         isOpen={modal.type === 'createColumn' || modal.type === 'editColumn'}
         mode={modal.type === 'createColumn' ? 'create' : 'edit'}
         initialData={modal.data?.col as Column | undefined}
-        onClose={() => setModal({ type: null })}
+        onClose={() => closeModal()}
         onSubmit={({ title, color, category }) => {
           if (!activeBoardId || !title.trim()) return
           if (modal.type === 'createColumn') {
@@ -413,7 +444,7 @@ const App = () => {
             const colId = (modal.data.col as Column).id
             updateColumn(activeBoardId, colId, title, color, category)
           }
-          setModal({ type: null })
+          closeModal()
           setLastActivity(Date.now())
         }}
       />
@@ -422,7 +453,7 @@ const App = () => {
         isOpen={modal.type === 'createCard' || modal.type === 'editCard'}
         mode={modal.type === 'createCard' ? 'create' : 'edit'}
         initialData={modal.data?.card as Card | undefined}
-        onClose={() => setModal({ type: null })}
+        onClose={closeModal}
         onSubmit={({ title, description, priority, subtasks }) => {
           if (!activeBoardId || !title.trim()) return
           const colId = modal.data?.colId as string | undefined
@@ -433,18 +464,48 @@ const App = () => {
             const cardId = (modal.data.card as Card).id
             updateCard(activeBoardId, colId, cardId, { title, description, priority, subtasks })
           }
-          setModal({ type: null })
+          closeModal()
           setLastActivity(Date.now())
+        }}
+        agents={agentsState.agents}
+        dispatches={
+          modal.type === 'editCard' && modal.data?.card
+            ? dispatchState.dispatchesByTaskId[(modal.data.card as Card).id] ?? []
+            : []
+        }
+        dispatchLoading={dispatchState.loading}
+        dispatchError={dispatchState.error}
+        dispatchDisabled={storageMode !== 'api'}
+        onCreateDispatch={async ({ taskId, agentId, prompt }) => {
+          if (!activeBoardId) return
+          await dispatchState.createDispatch({
+            boardId: activeBoardId,
+            taskId,
+            agentId,
+            prompt,
+            author: 'user',
+          })
+          setLastActivity(Date.now())
+        }}
+        onCancelDispatch={async (dispatchId) => {
+          await dispatchState.cancelDispatch(dispatchId)
+          if (modal.type === 'editCard' && modal.data?.card) {
+            void dispatchState.loadDispatchesForTask((modal.data.card as Card).id)
+          }
+        }}
+        onRefreshDispatches={(taskId) => {
+          void dispatchState.loadDispatchesForTask(taskId)
         }}
       />
 
       {/* Delete Confirmation Modal */}
       <DeleteConfirm
         isOpen={modal.type === 'deleteConfirm'}
-        onClose={() => setModal({ type: null })}
+        onClose={() => closeModal()}
         onConfirm={handleDeleteConfirm}
-        type={(modal.data?.type as 'board' | 'column' | 'card') ?? 'card'}
+        type={(modal.data?.type as 'board' | 'column' | 'card' | 'columnCards') ?? 'card'}
         itemName={modal.data?.name as string ?? ''}
+        cardCount={modal.data?.cardCount as number | undefined}
       />
 
       {/* Command Palette */}

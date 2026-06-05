@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import type { Card, PriorityKey, Subtask } from '../../types'
+import type { Card, PriorityKey, Subtask, Agent, TaskDispatch } from '../../types'
 import { PRIORITIES } from '../../types'
 import { Button } from '../ui/Button'
 import { InputGroup } from '../ui/InputGroup'
 import { Modal } from '../ui/Modal'
 import { generateId } from '../../utils/helpers'
+import { DispatchPanel } from '../dispatch/DispatchPanel'
 
 type CardFormProps = {
   isOpen: boolean
@@ -20,6 +21,19 @@ type CardFormProps = {
   mode: 'create' | 'edit'
   initialData?: Card
   darkMode?: boolean
+  // Agent Dispatch props
+  agents?: Agent[]
+  dispatches?: TaskDispatch[]
+  dispatchLoading?: boolean
+  dispatchError?: string | null
+  dispatchDisabled?: boolean
+  onCreateDispatch?: (data: {
+    taskId: string
+    agentId: string
+    prompt: string
+  }) => Promise<void> | void
+  onCancelDispatch?: (dispatchId: string) => Promise<void> | void
+  onRefreshDispatches?: (taskId: string) => void
 }
 
 export const CardForm = ({
@@ -28,6 +42,14 @@ export const CardForm = ({
   onSubmit,
   mode,
   initialData,
+  agents = [],
+  dispatches = [],
+  dispatchLoading = false,
+  dispatchError,
+  dispatchDisabled = false,
+  onCreateDispatch,
+  onCancelDispatch,
+  onRefreshDispatches,
 }: CardFormProps) => {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -178,6 +200,21 @@ export const CardForm = ({
             </Button>
           </div>
         </div>
+
+        {/* Agent Dispatch (only in edit mode) */}
+        {mode === 'edit' && initialData?.id && (
+          <DispatchPanel
+            taskId={initialData.id}
+            agents={agents}
+            dispatches={dispatches}
+            loading={dispatchLoading}
+            error={dispatchError}
+            disabled={dispatchDisabled}
+            onCreateDispatch={onCreateDispatch ?? (async () => {})}
+            onCancelDispatch={onCancelDispatch}
+            onRefresh={onRefreshDispatches}
+          />
+        )}
 
         {/* Form Action Buttons */}
         <div className="mt-6 flex justify-end gap-3 pt-2">

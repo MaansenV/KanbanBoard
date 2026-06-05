@@ -1,5 +1,5 @@
 import React from 'react'
-import { MoreHorizontal, Trash2, Plus, Calendar } from 'lucide-react'
+import { MoreHorizontal, Trash2, Plus, Calendar, Eraser } from 'lucide-react'
 import type { VisibleColumn, Card as CardType, Column as ColumnType } from '../../types'
 import { Card } from './Card'
 
@@ -15,6 +15,7 @@ type ColumnProps = {
   onAddCard: (columnId: string) => void
   onEditColumn: (column: ColumnType) => void
   onDeleteColumn: (columnId: string) => void
+  onClearColumn: (columnId: string) => void
   handleDragStart: (
     e: React.DragEvent<HTMLElement>,
     type: 'card' | 'column',
@@ -38,6 +39,7 @@ export const Column = ({
   onAddCard,
   onEditColumn,
   onDeleteColumn,
+  onClearColumn,
   handleDragStart,
   handleDragEnd,
   handleDropCard,
@@ -78,6 +80,15 @@ export const Column = ({
             title="Spalte bearbeiten"
           >
             <MoreHorizontal size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onClearColumn(column.id)}
+            disabled={column.totalCards === 0}
+            className="rounded p-1 text-muted-foreground hover:bg-orange-500/10 hover:text-orange-500 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground disabled:cursor-not-allowed"
+            title={column.totalCards === 0 ? 'Spalte ist bereits leer' : `Alle ${column.totalCards} Aufgaben leeren`}
+          >
+            <Eraser size={16} />
           </button>
           <button
             type="button"

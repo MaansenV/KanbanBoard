@@ -34,3 +34,34 @@ test('agent TODO tools are registered', () => {
     assert.equal(names.has(name), true, `${name} should be registered`)
   }
 })
+
+test('agent dispatch tools are registered', () => {
+  const names = new Set(toolDefinitions.map((tool) => tool.name))
+
+  for (const name of [
+    'register_agent',
+    'list_agents',
+    'dispatch_task',
+    'list_dispatches',
+    'complete_dispatch',
+    'cancel_dispatch',
+  ]) {
+    assert.equal(names.has(name), true, `${name} should be registered`)
+  }
+})
+
+test('dispatch_task requires taskId and prompt', async () => {
+  const tool = toolDefinitions.find((item) => item.name === 'dispatch_task')
+
+  // Empty args → prompt check fires first
+  await assert.rejects(
+    () => tool.handler({}),
+    /prompt is required/i,
+  )
+
+  // Prompt provided but no taskId
+  await assert.rejects(
+    () => tool.handler({ prompt: 'do something' }),
+    /Task ID is required/,
+  )
+})

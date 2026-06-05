@@ -18,7 +18,7 @@ const MCP_METRICS_FILE = resolve(
 )
 
 const priorities = new Set(['low', 'medium', 'high', 'critical'])
-const categories = new Set(['todo', 'doing', 'done', 'bugs', 'none'])
+const categories = new Set(['todo', 'doing', 'review', 'done', 'bugs', 'none'])
 
 export const dataFilePath = DATA_FILE
 export const mcpStatusFilePath = MCP_STATUS_FILE
@@ -153,6 +153,13 @@ export const createDefaultBoard = () => ({
       title: 'In Progress',
       color: 'bg-blue-500',
       category: 'doing',
+      cards: [],
+    },
+    {
+      id: generateId(),
+      title: 'Ready to Review',
+      color: 'bg-indigo-500',
+      category: 'review',
       cards: [],
     },
     {
@@ -896,6 +903,18 @@ export const completeTask = async ({ boardId, taskId, verificationNote, author }
     return moved
   })
 
+export const reviewTask = async ({ boardId, taskId, reviewNote, author } = {}) =>
+  mutateState((draft) => {
+    const board = findBoard(draft, boardId)
+    const targetColumn = findColumnByCategory(board, 'review')
+    const moved = moveTaskToColumn(board, taskId, targetColumn)
+    if (typeof reviewNote === 'string' && reviewNote.trim()) {
+      appendNoteToTask(moved.task, { text: reviewNote, type: 'progress', author })
+    }
+    touchTask(moved.task)
+    return moved
+  })
+
 export const blockTask = async ({ boardId, taskId, reason, author, moveToBugs = false } = {}) =>
   mutateState((draft) => {
     const board = findBoard(draft, boardId)
@@ -998,6 +1017,14 @@ const applyTaskChange = (board, change = {}) => {
     delete moved.task.blockedReason
     if (typeof change.verificationNote === 'string' && change.verificationNote.trim()) {
       appendNoteToTask(moved.task, { text: change.verificationNote, type: 'verification', author: change.author })
+    }
+    return moved
+  }
+  if (type === 'review') {
+    const targetColumn = findColumnByCategory(board, 'review')
+    const moved = moveTaskToColumn(board, change.taskId, targetColumn)
+    if (typeof change.reviewNote === 'string' && change.reviewNote.trim()) {
+      appendNoteToTask(moved.task, { text: change.reviewNote, type: 'progress', author: change.author })
     }
     return moved
   }

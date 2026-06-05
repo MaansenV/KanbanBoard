@@ -6,8 +6,9 @@ type DeleteConfirmProps = {
   isOpen: boolean
   onClose: () => void
   onConfirm: () => void
-  type: 'board' | 'column' | 'card'
+  type: 'board' | 'column' | 'card' | 'columnCards'
   itemName: string
+  cardCount?: number
 }
 
 export const DeleteConfirm = ({
@@ -16,20 +17,23 @@ export const DeleteConfirm = ({
   onConfirm,
   type,
   itemName,
+  cardCount,
 }: DeleteConfirmProps) => {
   const typeLabels: Record<string, string> = {
     board: 'Projekt',
     column: 'Spalte',
     card: 'Aufgabe',
+    columnCards: 'Spalteninhalt',
   }
 
   const label = typeLabels[type] || 'Element'
+  const isBulkClear = type === 'columnCards'
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`${label} löschen?`}
+      title={isBulkClear ? 'Spalte leeren?' : `${label} löschen?`}
     >
       <div className="space-y-4 text-left select-none">
         {/* Warning Icon & Warning Message */}
@@ -38,7 +42,9 @@ export const DeleteConfirm = ({
           <div>
             <h4 className="font-bold text-sm">Warnung vor irreversiblem Datenverlust</h4>
             <p className="text-xs mt-1 leading-normal opacity-90">
-              Du bist im Begriff, dieses Element dauerhaft zu löschen. Alle damit verbundenen Daten gehen unwiderruflich verloren.
+              {isBulkClear
+                ? 'Du bist im Begriff, alle Aufgaben dieser Spalte dauerhaft zu löschen. Die Spalte selbst bleibt erhalten.'
+                : 'Du bist im Begriff, dieses Element dauerhaft zu löschen. Alle damit verbundenen Daten gehen unwiderruflich verloren.'}
             </p>
           </div>
         </div>
@@ -56,6 +62,12 @@ export const DeleteConfirm = ({
               {itemName}
             </span>
           </div>
+          {isBulkClear && (
+            <div className="flex justify-between gap-2 mt-1">
+              <span className="text-muted-foreground">Anzahl Aufgaben:</span>
+              <span className="font-semibold text-foreground">{cardCount ?? 0}</span>
+            </div>
+          )}
         </div>
 
         {/* Buttons */}
@@ -64,7 +76,7 @@ export const DeleteConfirm = ({
             Abbrechen
           </Button>
           <Button variant="danger" onClick={onConfirm} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-            Löschen bestätigen
+            {isBulkClear ? 'Spalte leeren' : 'Löschen bestätigen'}
           </Button>
         </div>
       </div>
