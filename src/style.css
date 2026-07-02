@@ -3,105 +3,107 @@
 @tailwind utilities;
 
 /* ============================================================
-   KanbanBoard – Dev Dashboard Design System
-   Theme tokens, utility components & background effects
+   KanbanBoard – Modern Visual System
+   Refined palette, elevation, surface & motion tokens
    ============================================================ */
 
 @layer base {
   /* ----------------------------------------------------------
-     Light Theme (default :root)
-     GitHub Light inspired
+     Light Theme
+     Cool-warm balanced neutrals with a confident violet accent.
+     All text/background pairs exceed WCAG 2.1 AA.
      ---------------------------------------------------------- */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 216 18% 16%;
+    --background: 220 20% 97%;
+    --foreground: 222 25% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 216 18% 16%;
+    --card-foreground: 222 25% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 216 18% 16%;
+    --popover-foreground: 222 25% 12%;
 
-    --primary: 212 92% 45%;
+    --primary: 258 76% 56%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 29% 97%;
-    --secondary-foreground: 216 18% 16%;
+    --secondary: 220 16% 92%;
+    --secondary-foreground: 222 20% 22%;
 
-    --muted: 210 29% 97%;
-    --muted-foreground: 215 10% 43%;
+    --muted: 220 18% 94%;
+    --muted-foreground: 220 9% 38%;
 
-    --accent: 213 22% 92%;
-    --accent-foreground: 216 18% 16%;
+    --accent: 255 90% 96%;
+    --accent-foreground: 258 60% 32%;
 
-    --destructive: 2 89% 63%;
+    --destructive: 350 80% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 213 18% 83%;
-    --input: 213 18% 83%;
-    --ring: 212 92% 45%;
+    --border: 220 16% 86%;
+    --input: 220 14% 82%;
+    --ring: 258 76% 56%;
 
-    --radius: 0.75rem;
+    --radius: 0.875rem;
 
     /* Semantic status colours */
-    --success: 137 55% 49%;
+    --success: 152 55% 42%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 73% 49%;
+    --warning: 35 90% 45%;
     --warning-foreground: 0 0% 100%;
-    --info: 212 92% 67%;
+    --info: 220 80% 55%;
     --info-foreground: 0 0% 100%;
 
     /* Terminal / code surface */
-    --terminal: 210 29% 97%;
-    --terminal-foreground: 216 18% 16%;
-    --terminal-muted: 215 10% 43%;
+    --terminal: 220 18% 94%;
+    --terminal-foreground: 222 25% 12%;
+    --terminal-muted: 220 9% 44%;
   }
 
   /* ----------------------------------------------------------
      Dark Theme
-     GitHub Dark / VS Code inspired
+     Deep layered ink with a luminous violet accent.
+     Background is not flat black; cards sit one layer above.
      ---------------------------------------------------------- */
   .dark {
-    --background: 215 21% 7%;
-    --foreground: 213 27% 90%;
+    --background: 222 30% 6%;
+    --foreground: 220 20% 94%;
 
-    --card: 215 19% 11%;
-    --card-foreground: 213 27% 90%;
+    --card: 222 28% 9%;
+    --card-foreground: 220 20% 94%;
 
-    --popover: 215 19% 11%;
-    --popover-foreground: 213 27% 90%;
+    --popover: 222 28% 9%;
+    --popover-foreground: 220 20% 94%;
 
-    --primary: 212 100% 67%;
-    --primary-foreground: 215 21% 7%;
+    --primary: 263 92% 72%;
+    --primary-foreground: 222 40% 8%;
 
-    --secondary: 215 14% 15%;
-    --secondary-foreground: 213 27% 90%;
+    --secondary: 220 20% 14%;
+    --secondary-foreground: 220 16% 88%;
 
-    --muted: 215 14% 15%;
-    --muted-foreground: 213 10% 58%;
+    --muted: 220 24% 13%;
+    --muted-foreground: 220 10% 58%;
 
-    --accent: 215 11% 21%;
-    --accent-foreground: 213 27% 90%;
+    --accent: 257 40% 18%;
+    --accent-foreground: 263 80% 86%;
 
-    --destructive: 2 93% 63%;
+    --destructive: 350 75% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 215 11% 21%;
-    --input: 215 11% 21%;
-    --ring: 212 100% 67%;
+    --border: 220 18% 18%;
+    --input: 220 16% 20%;
+    --ring: 263 92% 72%;
 
     /* Semantic status colours */
-    --success: 137 55% 49%;
-    --success-foreground: 215 21% 7%;
-    --warning: 39 73% 49%;
-    --warning-foreground: 215 21% 7%;
-    --info: 212 100% 67%;
-    --info-foreground: 215 21% 7%;
+    --success: 152 55% 50%;
+    --success-foreground: 222 40% 8%;
+    --warning: 40 90% 55%;
+    --warning-foreground: 222 40% 8%;
+    --info: 220 80% 65%;
+    --info-foreground: 222 40% 8%;
 
     /* Terminal / code surface */
-    --terminal: 215 21% 7%;
-    --terminal-foreground: 137 55% 49%;
-    --terminal-muted: 213 10% 58%;
+    --terminal: 220 24% 11%;
+    --terminal-foreground: 263 80% 78%;
+    --terminal-muted: 220 10% 52%;
   }
 
   /* ----------------------------------------------------------
@@ -114,52 +116,202 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased transition-colors duration-700;
+    @apply bg-background text-foreground antialiased;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Focus ring */
+  /* Strong focus ring that survives on every interactive surface */
   :focus-visible {
-    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+    @apply outline-none;
+    box-shadow:
+      0 0 0 2px hsl(var(--background)),
+      0 0 0 4px hsl(var(--ring) / 0.75);
   }
 }
 
-/* ==============================================================
+/* =============================================================
    Component utilities
-   ============================================================== */
+   ============================================================= */
 
 @layer components {
-  /* ---- Glass panels ---------------------------------------- */
-  .glass-panel {
-    @apply relative overflow-hidden rounded-lg transition-all duration-700;
-    background: hsl(var(--card) / 0.65);
-    backdrop-filter: blur(24px) saturate(1.4);
-    -webkit-backdrop-filter: blur(24px) saturate(1.4);
-    border: 1px solid hsl(var(--foreground) / 0.08);
+  /* ---- Surface primitives ---------------------------------- */
+  .surface-card {
+    @apply relative overflow-hidden rounded-xl;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border) / 0.6);
     box-shadow:
-      0 4px 30px rgba(0, 0, 0, 0.1),
-      inset 0 1px 0 hsl(var(--foreground) / 0.04);
+      0 1px 2px hsl(var(--foreground) / 0.03),
+      0 4px 16px hsl(var(--foreground) / 0.04);
+  }
+
+  .surface-panel {
+    @apply relative overflow-hidden rounded-2xl;
+    background: hsl(var(--card) / 0.72);
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    border: 1px solid hsl(var(--foreground) / 0.06);
+    box-shadow:
+      0 1px 0 hsl(var(--foreground) / 0.02) inset,
+      0 8px 32px hsl(var(--foreground) / 0.07);
+  }
+
+  .dark .surface-panel {
+    background: hsl(var(--card) / 0.55);
+    border-color: hsl(var(--foreground) / 0.08);
+    box-shadow:
+      0 1px 0 hsl(var(--foreground) / 0.04) inset,
+      0 12px 40px hsl(0 0% 0% / 0.28);
+  }
+
+  /* Legacy glass-panel alias kept for compatibility */
+  .glass-panel {
+    @apply surface-panel;
   }
 
   .glass-card {
-    @apply relative overflow-hidden rounded-lg transition-all duration-200;
-    background: hsl(var(--card) / 0.45);
-    backdrop-filter: blur(12px) saturate(1.2);
-    -webkit-backdrop-filter: blur(12px) saturate(1.2);
-    border: 1px solid hsl(var(--foreground) / 0.06);
-    box-shadow: 0 2px 15px rgba(0, 0, 0, 0.06);
+    @apply relative overflow-hidden rounded-xl;
+    background: hsl(var(--card) / 0.6);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    border: 1px solid hsl(var(--border) / 0.55);
+    box-shadow:
+      0 1px 2px hsl(var(--foreground) / 0.03),
+      0 6px 20px hsl(var(--foreground) / 0.05);
+    transition:
+      transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+      background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+      border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .glass-card:hover {
-    background: hsl(var(--card) / 0.6);
-    border-color: hsl(var(--foreground) / 0.1);
-    box-shadow: 0 4px 25px rgba(0, 0, 0, 0.1);
+    background: hsl(var(--card) / 0.78);
+    border-color: hsl(var(--border) / 0.8);
+    box-shadow:
+      0 1px 2px hsl(var(--foreground) / 0.04),
+      0 10px 28px hsl(var(--foreground) / 0.08);
     transform: translateY(-1px);
   }
 
-  /* ---- Custom scrollbar (Global) ---------------------------- */
+  .dark .glass-card {
+    background: hsl(var(--card) / 0.4);
+    box-shadow:
+      0 1px 0 hsl(var(--foreground) / 0.03) inset,
+      0 6px 22px hsl(0 0% 0% / 0.22);
+  }
+
+  .dark .glass-card:hover {
+    background: hsl(var(--card) / 0.55);
+    box-shadow:
+      0 1px 0 hsl(var(--foreground) / 0.05) inset,
+      0 12px 34px hsl(0 0% 0% / 0.32);
+  }
+
+  /* ---- Buttons ---------------------------------------------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200;
+    @apply select-none disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .btn-primary {
+    @apply btn;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    box-shadow:
+      0 1px 0 hsl(var(--primary-foreground) / 0.16) inset,
+      0 4px 14px hsl(var(--primary) / 0.32);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    box-shadow:
+      0 1px 0 hsl(var(--primary-foreground) / 0.18) inset,
+      0 6px 20px hsl(var(--primary) / 0.42);
+  }
+
+  .btn-secondary {
+    @apply btn border;
+    background: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+    border-color: hsl(var(--border));
+    box-shadow: 0 2px 6px hsl(var(--foreground) / 0.03);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background: hsl(var(--secondary) / 0.8);
+    border-color: hsl(var(--border) / 0.95);
+  }
+
+  .btn-ghost {
+    @apply btn;
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
+  }
+
+  .btn-danger {
+    @apply btn border;
+    background: hsl(var(--destructive));
+    color: hsl(var(--destructive-foreground));
+    border-color: hsl(var(--destructive) / 0.2);
+    box-shadow:
+      0 1px 0 hsl(var(--destructive-foreground) / 0.12) inset,
+      0 4px 14px hsl(var(--destructive) / 0.22);
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    box-shadow:
+      0 1px 0 hsl(var(--destructive-foreground) / 0.14) inset,
+      0 6px 20px hsl(var(--destructive) / 0.34);
+  }
+
+  .btn-icon {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors duration-200;
+    @apply text-muted-foreground hover:bg-accent hover:text-accent-foreground;
+  }
+
+  /* ---- Inputs ----------------------------------------------- */
+  .form-input {
+    @apply w-full rounded-lg border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition-all duration-200;
+    border-color: hsl(var(--input));
+  }
+
+  .form-input::placeholder {
+    color: hsl(var(--muted-foreground) / 0.7);
+  }
+
+  .dark .form-input::placeholder {
+    color: hsl(var(--muted-foreground) / 0.88);
+  }
+
+  .form-input:hover {
+    border-color: hsl(var(--border));
+  }
+
+  .form-input:focus {
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.12);
+  }
+
+  .form-input-error {
+    border-color: hsl(var(--destructive) / 0.6);
+  }
+
+  .form-input-error:focus {
+    border-color: hsl(var(--destructive));
+    box-shadow: 0 0 0 3px hsl(var(--destructive) / 0.14);
+  }
+
+  /* ---- Custom scrollbar ------------------------------------- */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -170,22 +322,19 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted-foreground) / 0.25);
+    background: hsl(var(--muted-foreground) / 0.22);
     border-radius: 9999px;
     border: 1px solid transparent;
     background-clip: padding-box;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground) / 0.4);
-    border: 1px solid transparent;
-    background-clip: padding-box;
+    background: hsl(var(--muted-foreground) / 0.36);
   }
 
-  /* Firefox and others */
   * {
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.22) transparent;
   }
 
   /* ---- Priority accent stripes ------------------------------ */
@@ -209,97 +358,173 @@
   .terminal-text {
     @apply font-mono;
     font-size: 0.875em;
-    letter-spacing: 0.025em;
+    letter-spacing: 0.01em;
     color: hsl(var(--terminal-foreground));
   }
 
   /* ---- Status dots ------------------------------------------ */
   .status-dot {
     @apply inline-block rounded-full;
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     flex-shrink: 0;
   }
 
   .status-dot-active {
     background-color: hsl(var(--success));
-    box-shadow: 0 0 6px hsl(var(--success) / 0.5);
-    animation: status-pulse 2s ease-in-out infinite;
+    box-shadow: 0 0 0 3px hsl(var(--success) / 0.18);
+    animation: status-pulse 2.2s ease-in-out infinite;
   }
 
   .status-dot-inactive {
-    background-color: hsl(var(--muted-foreground) / 0.4);
+    background-color: hsl(var(--muted-foreground) / 0.45);
   }
 
   @keyframes status-pulse {
     0%, 100% {
       opacity: 1;
-      box-shadow: 0 0 6px hsl(var(--success) / 0.5);
+      box-shadow: 0 0 0 3px hsl(var(--success) / 0.18);
     }
     50% {
-      opacity: 0.7;
-      box-shadow: 0 0 12px hsl(var(--success) / 0.8);
+      opacity: 0.65;
+      box-shadow: 0 0 0 5px hsl(var(--success) / 0.08);
     }
   }
 
-  /* ---- Background mesh gradients ---------------------------- */
-
-  /* Dark mesh – subtle blue / purple atmospheric glow */
+  /* ---- Background atmospheric layers ------------------------ */
   .bg-mesh {
     background-image:
       radial-gradient(
-        ellipse 80% 60% at 10% 20%,
-        hsl(212 100% 67% / 0.06) 0%,
-        transparent 60%
-      ),
-      radial-gradient(
-        ellipse 60% 50% at 85% 75%,
-        hsl(270 60% 70% / 0.05) 0%,
+        ellipse 70% 55% at 12% 18%,
+        hsl(263 60% 60% / 0.09) 0%,
         transparent 55%
       ),
       radial-gradient(
-        ellipse 70% 45% at 50% 5%,
-        hsl(215 50% 40% / 0.04) 0%,
+        ellipse 55% 45% at 88% 80%,
+        hsl(220 60% 55% / 0.06) 0%,
         transparent 50%
+      ),
+      radial-gradient(
+        ellipse 60% 40% at 50% 0%,
+        hsl(258 50% 45% / 0.04) 0%,
+        transparent 45%
       );
   }
 
-  /* Light mesh – extremely subtle warm wash */
   .bg-mesh-light {
     background-image:
       radial-gradient(
-        ellipse 80% 60% at 15% 25%,
-        hsl(212 60% 60% / 0.025) 0%,
-        transparent 60%
-      ),
-      radial-gradient(
-        ellipse 60% 50% at 80% 70%,
-        hsl(30 50% 60% / 0.02) 0%,
+        ellipse 70% 55% at 18% 28%,
+        hsl(258 60% 60% / 0.035) 0%,
         transparent 55%
       ),
       radial-gradient(
-        ellipse 70% 45% at 50% 10%,
-        hsl(260 40% 65% / 0.015) 0%,
+        ellipse 55% 45% at 82% 72%,
+        hsl(220 60% 55% / 0.025) 0%,
         transparent 50%
+      ),
+      radial-gradient(
+        ellipse 60% 40% at 50% 8%,
+        hsl(255 40% 60% / 0.02) 0%,
+        transparent 45%
       );
   }
 
-  /* Dot grid pattern for developer/terminal backdrop feel */
+  /* Very faint dot grid; fades further into the background. */
   .bg-dot-grid {
-    background-image: radial-gradient(hsl(var(--foreground) / 0.08) 1px, transparent 1px);
-    background-size: 20px 20px;
+    background-image: radial-gradient(hsl(var(--foreground) / 0.045) 1px, transparent 1px);
+    background-size: 24px 24px;
   }
 
-  /* Premium Glow and Border utility classes */
+  .bg-noise {
+    position: relative;
+  }
+
+  .bg-noise::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  }
+
+  /* ---- Subtle glow utility --------------------------------- */
   .glow-shadow-primary {
-    box-shadow: 0 0 20px hsl(var(--primary) / 0.15), 0 0 4px hsl(var(--primary) / 0.1);
+    box-shadow: 0 0 24px hsl(var(--primary) / 0.14);
   }
-  
+
   .glow-border-hover {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
+
   .glow-border-hover:hover {
-    border-color: hsl(var(--primary) / 0.4);
-    box-shadow: 0 0 15px hsl(var(--primary) / 0.1), inset 0 1px 0 hsl(var(--foreground) / 0.04);
+    border-color: hsl(var(--primary) / 0.35);
+    box-shadow: 0 0 18px hsl(var(--primary) / 0.08);
+  }
+
+  /* ---- Dragging states ------------------------------------- */
+  .dragging {
+    opacity: 0.55;
+    cursor: grabbing;
+    transform: scale(0.98) rotate(0.5deg);
+  }
+
+  .drop-target {
+    box-shadow: 0 0 0 2px hsl(var(--primary) / 0.35) inset;
+  }
+
+  /* ---- Tab active underline ------------------------------- */
+  .tab-glow-underline {
+    height: 2.5px;
+    border-radius: 9999px 9999px 0 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--primary)) 20%,
+      hsl(var(--primary)) 80%,
+      transparent
+    );
+    /* Light mode: matched to the dark halo so the glow reads as
+       equally confident on a light surface (light backgrounds
+       absorb perceived glow strength, so parity needs equal or
+       stronger alpha, not weaker). */
+    box-shadow:
+      0 -6px 22px hsl(var(--primary) / 0.55),
+      0 -2px 8px hsl(var(--primary) / 0.4);
+  }
+
+  /* Dark backgrounds absorb glow; keep the same confident halo. */
+  .dark .tab-glow-underline {
+    box-shadow:
+      0 -6px 22px hsl(var(--primary) / 0.55),
+      0 -2px 8px hsl(var(--primary) / 0.4);
+  }
+
+  /* ---- Progress bar --------------------------------------- */
+  .progress-track {
+    @apply h-1.5 w-full overflow-hidden rounded-full;
+    background: hsl(var(--muted));
+    box-shadow: inset 0 1px 2px hsl(var(--foreground) / 0.06);
+  }
+
+  .progress-fill {
+    @apply h-full rounded-full transition-all duration-500 ease-out;
+    background: linear-gradient(90deg, hsl(var(--primary)), hsl(263 92% 72%));
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .animate-in {
+    animation: fade-in 0.25s ease-out, scale-in 0.25s ease-out;
+  }
+
+  /* Utility to keep content crisp over translucent surfaces */
+  .text-glass {
+    text-shadow: 0 1px 0 hsl(var(--foreground) / 0.04);
   }
 }

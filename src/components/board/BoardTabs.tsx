@@ -19,34 +19,34 @@ export const BoardTabs = ({
   onAddBoard,
 }: BoardTabsProps) => {
   return (
-    <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar select-none text-left">
+    <div className="custom-scrollbar mb-1 flex select-none gap-2 overflow-x-auto pb-2 text-left">
       {boards.map((board, index) => {
         const isActive = activeBoardId === board.id
         return (
           <div
             key={board.id}
             onClick={() => setActiveBoardId(board.id)}
-            className={`group relative flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-700 hover:duration-150 cursor-pointer overflow-hidden ${
+            className={`group relative flex cursor-pointer items-center gap-2.5 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
               isActive
-                ? 'bg-card text-foreground border border-primary/30 shadow-[0_4px_20px_rgba(0,0,0,0.15)] glow-shadow-primary'
-                : 'bg-secondary/40 text-muted-foreground hover:bg-secondary/70 hover:text-foreground border border-border/30'
+                ? 'border border-primary/25 bg-card text-foreground shadow-float dark:border-primary/40 dark:bg-primary/5'
+                : 'border border-border/40 bg-secondary/60 text-muted-foreground hover:border-border hover:bg-secondary hover:text-foreground'
             }`}
           >
             {/* Monospace index indicator */}
-            <span className="font-mono text-[10px] text-muted-foreground/60 group-hover:text-primary/70 transition-colors">
+            <span className="font-mono text-[10px] text-muted-foreground/60 transition-colors group-hover:text-primary/70">
               {(index + 1).toString().padStart(2, '0')}
             </span>
-            
-            <span className="font-semibold tracking-tight">{board.title}</span>
 
-            {/* Glowing neon bottom bar for active tab */}
+            <span className="truncate font-semibold tracking-tight">{board.title}</span>
+
+            {/* Premium active underline */}
             {isActive && (
-              <span className="absolute bottom-0 left-3 right-3 h-[2.5px] rounded-t bg-gradient-to-r from-primary via-blue-400 to-primary shadow-[0_1px_8px_hsl(var(--primary))]" />
+              <span className="tab-glow-underline absolute -bottom-px left-3 right-3" />
             )}
 
             {/* Edit / Delete actions */}
             <div
-              className={`flex items-center gap-1.5 ml-1 transition-all duration-200 ${
+              className={`ml-1 flex items-center gap-1 transition-opacity duration-200 ${
                 isActive
                   ? 'opacity-0 group-hover:opacity-100'
                   : 'opacity-0'
@@ -58,7 +58,7 @@ export const BoardTabs = ({
                   e.stopPropagation()
                   onEditBoard(board)
                 }}
-                className="rounded-md p-1 text-muted-foreground/70 transition-all hover:bg-secondary hover:text-foreground"
+                className="rounded-md p-1 text-muted-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
                 title="Projekt umbenennen"
               >
                 <Edit2 size={12} />
@@ -69,7 +69,7 @@ export const BoardTabs = ({
                   e.stopPropagation()
                   onDeleteBoard(board.id)
                 }}
-                className="rounded-md p-1 text-muted-foreground/70 transition-all hover:bg-destructive/10 hover:text-destructive"
+                className="rounded-md p-1 text-muted-foreground/80 transition-colors hover:bg-destructive/10 hover:text-destructive"
                 title="Projekt löschen"
               >
                 <Trash2 size={12} />
@@ -78,15 +78,14 @@ export const BoardTabs = ({
           </div>
         )
       })}
-      
+
       <button
         type="button"
         onClick={onAddBoard}
-        className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-background/30 px-4 py-2.5 text-sm font-semibold text-muted-foreground transition-all hover:border-primary hover:bg-background/50 hover:text-primary active:scale-95"
+        className="flex items-center gap-2 rounded-xl border border-dashed border-border bg-card/40 px-4 py-2.5 text-sm font-semibold text-muted-foreground transition-all duration-200 hover:border-primary/50 hover:bg-accent hover:text-primary active:scale-95"
       >
         <Plus size={16} /> Projekt hinzufügen
       </button>
     </div>
   )
 }
-

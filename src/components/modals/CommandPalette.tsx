@@ -93,12 +93,12 @@ export const CommandPalette = ({ isOpen, onClose, actions }: CommandPaletteProps
   const getCategoryIcon = (category: CommandPaletteAction['category']) => {
     switch (category) {
       case 'board':
-        return <Compass size={16} className="text-blue-400" />
+        return <Compass size={16} className="text-primary" />
       case 'task':
-        return <CheckSquare size={16} className="text-emerald-400" />
+        return <CheckSquare size={16} className="text-emerald-500" />
       case 'aktion':
       default:
-        return <Terminal size={16} className="text-purple-400" />
+        return <Terminal size={16} className="text-violet-400" />
     }
   }
 
@@ -116,19 +116,19 @@ export const CommandPalette = ({ isOpen, onClose, actions }: CommandPaletteProps
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 pt-[15vh] transition-all animate-fade-in"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-[15vh] backdrop-blur-sm transition-all animate-fade-in"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card/95 shadow-2xl glass-panel animate-scale-in">
+      <div className="surface-card w-full max-w-xl animate-scale-in overflow-hidden rounded-2xl shadow-panel" role="dialog" aria-modal="true">
         {/* Search input container */}
         <div className="relative flex items-center border-b border-border/60 p-4">
           <Search size={18} className="absolute left-4 text-muted-foreground" />
           <input
             ref={inputRef}
             type="text"
-            className="w-full bg-transparent pl-8 pr-4 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-0"
+            className="w-full bg-transparent pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-0"
             placeholder="Suche nach Projekten, Aufgaben oder Aktionen..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -138,7 +138,7 @@ export const CommandPalette = ({ isOpen, onClose, actions }: CommandPaletteProps
         {/* Results list */}
         <div
           ref={listRef}
-          className="max-h-80 overflow-y-auto p-2 custom-scrollbar text-left"
+          className="custom-scrollbar max-h-80 overflow-y-auto p-2 text-left"
         >
           {filteredActions.length === 0 ? (
             <div className="py-8 text-center text-xs text-muted-foreground">
@@ -157,21 +157,21 @@ export const CommandPalette = ({ isOpen, onClose, actions }: CommandPaletteProps
                     act.action()
                     onClose()
                   }}
-                  className={`flex items-center justify-between rounded-xl px-4 py-3 cursor-pointer transition-all ${
+                  className={`flex cursor-pointer items-center justify-between rounded-xl px-4 py-3 transition-all duration-150 ${
                     isSelected
-                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/10'
-                      : 'hover:bg-accent/50 text-foreground'
+                      ? 'bg-primary text-primary-foreground shadow-glow-sm'
+                      : 'text-foreground hover:bg-accent/60'
                   }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex min-w-0 items-center gap-3">
                     <span className={isSelected ? 'text-primary-foreground' : 'text-muted-foreground'}>
                       {act.icon || getCategoryIcon(act.category)}
                     </span>
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold truncate">{act.label}</div>
+                      <div className="truncate text-sm font-semibold">{act.label}</div>
                       {act.description && (
                         <div
-                          className={`text-xs truncate ${
+                          className={`truncate text-xs ${
                             isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground'
                           }`}
                         >
@@ -183,7 +183,7 @@ export const CommandPalette = ({ isOpen, onClose, actions }: CommandPaletteProps
 
                   {/* Category Pill */}
                   <span
-                    className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+                    className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
                       isSelected
                         ? 'bg-primary-foreground/20 text-primary-foreground'
                         : 'bg-secondary text-muted-foreground'
@@ -198,7 +198,7 @@ export const CommandPalette = ({ isOpen, onClose, actions }: CommandPaletteProps
         </div>
 
         {/* Footer shortcuts */}
-        <div className="flex justify-between border-t border-border/50 bg-secondary/35 px-4 py-2 text-[10px] text-muted-foreground font-mono">
+        <div className="flex justify-between border-t border-border/50 bg-secondary/40 px-4 py-2 font-mono text-[10px] text-muted-foreground">
           <span>&uarr;&darr; zum Navigieren · Enter zum Ausführen</span>
           <span>Esc zum Schließen</span>
         </div>

@@ -29,7 +29,7 @@ export const Tooltip = ({ content, children, position = 'top', className = '' }:
       {children}
       {visible && (
         <div
-          className={`absolute z-50 pointer-events-none whitespace-nowrap rounded-md bg-secondary border border-border px-2 py-1 text-xs text-secondary-foreground shadow-md transition-opacity duration-150 animate-fade-in ${positionClasses[position]}`}
+          className={`absolute z-50 pointer-events-none whitespace-nowrap rounded-lg border border-border/70 bg-card px-2.5 py-1 text-[11px] font-medium text-card-foreground shadow-float animate-fade-in ${positionClasses[position]}`}
           role="tooltip"
         >
           {content}

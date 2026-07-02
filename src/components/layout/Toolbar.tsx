@@ -70,25 +70,25 @@ export const Toolbar = ({
   }))
 
   return (
-    <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border/50 bg-secondary/20 p-3 sm:flex-row sm:items-center transition-all duration-700">
+    <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border/50 bg-card/60 p-3 shadow-surface backdrop-blur-sm sm:flex-row sm:items-center transition-colors duration-300">
       <div className="relative min-w-[220px] flex-1">
         <Search
           size={16}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors duration-700"
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
         <input
           type="search"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Aufgaben suchen..."
-          className="h-10 w-full rounded-lg border border-input bg-background/60 pl-9 pr-3 text-sm text-foreground outline-none transition-all duration-700 placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
+          className="form-input h-10 pl-9 pr-3"
         />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex h-10 items-center gap-2 rounded-lg border border-border bg-background/60 px-3 text-muted-foreground transition-all duration-700">
+        <div className="flex h-10 items-center gap-2 rounded-lg border border-border bg-card px-3 text-muted-foreground shadow-sm">
           <SlidersHorizontal size={15} />
-          <span className="text-xs font-semibold font-mono">
+          <span className="font-mono text-xs font-semibold">
             {visibleCount}/{totalCount}
           </span>
         </div>
@@ -121,7 +121,7 @@ export const Toolbar = ({
           <button
             type="button"
             onClick={onClearFilters}
-            className="flex h-10 items-center gap-2 rounded-lg border border-border bg-background/60 px-3 text-sm font-medium text-muted-foreground transition-colors duration-700 hover:bg-accent hover:text-foreground"
+            className="flex h-10 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-muted-foreground transition-colors duration-200 hover:bg-accent hover:text-accent-foreground"
           >
             <X size={15} /> Zurücksetzen
           </button>
@@ -130,4 +130,3 @@ export const Toolbar = ({
     </div>
   )
 }
-

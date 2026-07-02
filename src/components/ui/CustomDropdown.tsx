@@ -100,25 +100,29 @@ export const CustomDropdown = ({
       <button
         type="button"
         onClick={handleToggle}
-        className={`flex h-10 w-full items-center justify-between gap-3 rounded-lg border border-input bg-background/60 px-3 text-sm text-foreground outline-none transition-all duration-700 focus:border-primary focus:ring-2 focus:ring-primary/20 ${
-          isOpen ? 'border-primary ring-2 ring-primary/20' : ''
+        className={`flex h-10 w-full items-center justify-between gap-3 rounded-lg border bg-card px-3 text-sm text-foreground outline-none transition-all duration-200 hover:border-primary/40 hover:bg-card/80 ${
+          isOpen
+            ? 'border-primary ring-2 ring-primary/15'
+            : 'border-input'
         }`}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-label={ariaLabel}
       >
         <div className="flex items-center gap-2 truncate">
-          {selectedOption?.icon && (
-            <span className="text-muted-foreground shrink-0">{selectedOption.icon}</span>
-          )}
           {selectedOption?.colorDot && (
-            <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${selectedOption.colorDot}`} />
+            <span className={`h-2 w-2 rounded-full shrink-0 ${selectedOption.colorDot}`} />
           )}
-          <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
+          {selectedOption?.icon && (
+            <span className="shrink-0 text-muted-foreground">{selectedOption.icon}</span>
+          )}
+          <span className="truncate">
+            {selectedOption ? selectedOption.label : placeholder}
+          </span>
         </div>
         <ChevronDown
           size={16}
-          className={`text-muted-foreground shrink-0 transition-transform duration-200 ${
+          className={`shrink-0 text-muted-foreground transition-transform duration-200 ${
             isOpen ? 'rotate-180 text-primary' : ''
           }`}
         />
@@ -127,7 +131,7 @@ export const CustomDropdown = ({
       {/* Floating Options Menu */}
       {isOpen && (
         <ul
-          className="absolute z-50 mt-1.5 max-h-60 w-full min-w-[200px] overflow-y-auto rounded-lg border border-border/80 bg-card/90 p-1 shadow-xl backdrop-blur-xl animate-fade-in custom-scrollbar focus:outline-none"
+          className="absolute z-50 mt-1.5 max-h-60 w-full min-w-[200px] overflow-y-auto rounded-xl border border-border/80 bg-card/95 p-1 shadow-float backdrop-blur-xl animate-fade-in custom-scrollbar focus:outline-none"
           role="listbox"
           aria-label={ariaLabel}
           style={{
@@ -143,23 +147,23 @@ export const CustomDropdown = ({
                 key={opt.value}
                 onClick={() => handleSelect(opt.value)}
                 onMouseEnter={() => setFocusedIndex(index)}
-                className={`relative flex cursor-pointer select-none items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                className={`relative flex cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
                   isSelected
-                    ? 'bg-primary/10 text-primary font-medium'
+                    ? 'bg-primary/10 text-primary font-semibold'
                     : isFocused
-                      ? 'bg-secondary text-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
                 }`}
                 role="option"
                 aria-selected={isSelected}
               >
+                {opt.colorDot && (
+                  <span className={`h-2 w-2 rounded-full shrink-0 ${opt.colorDot}`} />
+                )}
                 {opt.icon && (
                   <span className={`shrink-0 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`}>
                     {opt.icon}
                   </span>
-                )}
-                {opt.colorDot && (
-                  <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${opt.colorDot}`} />
                 )}
                 <span className="truncate flex-1">{opt.label}</span>
                 {isSelected && (

@@ -12,20 +12,25 @@ export const Modal = ({ isOpen, onClose, title, children }: ModalProps) => {
   if (!isOpen) return null
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-sm animate-fade-in"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-md transform rounded-2xl glass-panel p-6 animate-scale-in">
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-foreground font-display">
+      <div
+        className="w-full max-w-md rounded-2xl surface-card p-6 animate-scale-in shadow-panel"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <h2 className="font-display text-xl font-semibold tracking-tight text-foreground">
             {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="btn-icon"
+            aria-label="Schließen"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
         {children}

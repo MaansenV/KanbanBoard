@@ -9,11 +9,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
     return (
       <input
         type={type}
-        className={`w-full rounded-lg border bg-background/50 p-3 text-sm text-foreground transition-all placeholder:text-muted-foreground focus:bg-background focus:outline-none focus:ring-2 ${
-          error
-            ? 'border-destructive focus:border-destructive focus:ring-destructive/20'
-            : 'border-input focus:border-primary focus:ring-primary/20'
-        } ${className}`}
+        className={`form-input ${error ? 'form-input-error' : ''} ${className}`}
         ref={ref}
         {...props}
       />

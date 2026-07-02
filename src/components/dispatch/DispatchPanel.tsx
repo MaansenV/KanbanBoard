@@ -79,7 +79,7 @@ export const DispatchPanel = ({
   }
 
   return (
-    <div className="space-y-4 border-t border-border/40 pt-4 mt-4">
+    <div className="mt-4 space-y-4 border-t border-border/40 pt-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -91,7 +91,7 @@ export const DispatchPanel = ({
             type="button"
             onClick={() => onRefresh(taskId)}
             disabled={loading}
-            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+            className="btn-icon"
             title="Aktualisieren"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -101,7 +101,7 @@ export const DispatchPanel = ({
 
       {/* Disabled Notice */}
       {disabled && (
-        <p className="text-xs text-muted-foreground bg-secondary/30 rounded-lg px-3 py-2">
+        <p className="rounded-lg bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
           Dispatch ist nur verfügbar, wenn die Offline-API läuft.
         </p>
       )}
@@ -117,10 +117,10 @@ export const DispatchPanel = ({
             <select
               value={selectedAgentId}
               onChange={(e) => setSelectedAgentId(e.target.value)}
-              className="w-full rounded-lg border border-input bg-background/50 p-2.5 text-sm text-foreground transition-all focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="form-input p-2.5"
             >
               {agents.map((agent) => (
-                <option key={agent.id} value={agent.id} className="bg-background text-foreground">
+                <option key={agent.id} value={agent.id} className="bg-card text-foreground">
                   {agent.name} {agent.status === 'busy' ? '(busy)' : ''}
                 </option>
               ))}
@@ -137,7 +137,7 @@ export const DispatchPanel = ({
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="z.B. Implementiere das Button-Layout mit Tailwind, responsive und dark-mode kompatibel..."
               rows={3}
-              className="w-full rounded-lg border border-input bg-background/50 px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+              className="form-input resize-none"
             />
           </div>
 
@@ -159,7 +159,7 @@ export const DispatchPanel = ({
 
           {/* Error Display */}
           {(error || localError) && (
-            <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+            <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {localError || error}
             </p>
           )}
@@ -170,39 +170,39 @@ export const DispatchPanel = ({
       {dispatches.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-xs font-medium text-muted-foreground">Dispatch-Historie</h4>
-          <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+          <div className="custom-scrollbar max-h-48 space-y-2 overflow-y-auto">
             {dispatches.map((dispatch) => (
               <div
                 key={dispatch.id}
-                className="rounded-lg border border-border/40 bg-secondary/15 p-3 space-y-1.5"
+                className="space-y-1.5 rounded-xl border border-border/40 bg-secondary/20 p-3"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Badge variant={statusBadgeVariant(dispatch.status)}>
                       {DISPATCH_STATUS_LABELS[dispatch.status]}
                     </Badge>
-                    <span className="text-xs text-muted-foreground font-medium">
+                    <span className="text-xs font-medium text-muted-foreground">
                       {agents.find((a) => a.id === dispatch.agentId)?.name ?? dispatch.agentId}
                     </span>
                   </div>
-                  <span className="text-xs text-muted-foreground shrink-0">
+                  <span className="shrink-0 text-xs text-muted-foreground">
                     {formatTimeAgo(dispatch.createdAt)}
                   </span>
                 </div>
 
                 {/* Prompt Preview */}
-                <p className="text-xs text-foreground/80 line-clamp-2">
+                <p className="line-clamp-2 text-xs text-foreground/80">
                   {dispatch.prompt}
                 </p>
 
                 {/* Result/Error */}
                 {dispatch.result && (
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 rounded px-2 py-1">
+                  <p className="rounded bg-emerald-500/10 px-2 py-1 text-xs text-emerald-600 dark:text-emerald-400">
                     {dispatch.result}
                   </p>
                 )}
                 {dispatch.error && (
-                  <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1">
+                  <p className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">
                     {dispatch.error}
                   </p>
                 )}
@@ -212,7 +212,7 @@ export const DispatchPanel = ({
                   <button
                     type="button"
                     onClick={() => handleCancel(dispatch.id)}
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors mt-1"
+                    className="mt-1 flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-destructive"
                   >
                     <X size={12} />
                     Abbrechen

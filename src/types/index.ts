@@ -241,7 +241,7 @@ export const PRIORITIES: Record<PriorityKey, PriorityConfig & { icon: React.Reac
   high: {
     label: 'Hoch',
     value: 3,
-    color: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+    color: 'bg-orange-500/10 dark:bg-orange-500/15 text-orange-400 dark:text-orange-300 border-orange-500/20 dark:border-orange-500/30',
     accentClass: 'accent-stripe-high',
     icon: React.createElement(AlertCircle, { size: 14 }),
   },

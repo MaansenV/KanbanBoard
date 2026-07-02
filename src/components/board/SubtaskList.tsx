@@ -1,4 +1,4 @@
-import { CheckCircle2 } from 'lucide-react'
+import { Check } from 'lucide-react'
 import type { Subtask } from '../../types'
 
 type SubtaskListProps = {
@@ -11,22 +11,22 @@ export const SubtaskList = ({ subtasks, onToggle }: SubtaskListProps) => (
     {subtasks.map((subtask) => (
       <div
         key={subtask.id}
-        className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+        className="group flex items-center gap-2 rounded-md py-0.5 text-xs text-muted-foreground hover:bg-accent/40 hover:text-foreground cursor-pointer transition-colors"
         onClick={(e) => {
           e.stopPropagation()
           onToggle(subtask.id)
         }}
       >
         <div
-          className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-colors ${
+          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all duration-200 ${
             subtask.completed
               ? 'bg-primary border-primary text-primary-foreground'
-              : 'border-muted-foreground/50 hover:border-primary'
+              : 'border-muted-foreground/40 bg-card hover:border-primary/60'
           }`}
         >
-          {subtask.completed && <CheckCircle2 size={10} />}
+          {subtask.completed && <Check size={10} strokeWidth={3} />}
         </div>
-        <span className={subtask.completed ? 'line-through opacity-50' : ''}>
+        <span className={`transition-all ${subtask.completed ? 'line-through opacity-50' : ''}`}>
           {subtask.title}
         </span>
       </div>

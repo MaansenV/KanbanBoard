@@ -38,10 +38,10 @@ export const DeleteConfirm = ({
       <div className="space-y-4 text-left select-none">
         {/* Warning Icon & Warning Message */}
         <div className="flex items-start gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-destructive">
-          <AlertTriangle className="shrink-0 mt-0.5" size={20} />
+          <AlertTriangle className="mt-0.5 shrink-0" size={20} />
           <div>
-            <h4 className="font-bold text-sm">Warnung vor irreversiblem Datenverlust</h4>
-            <p className="text-xs mt-1 leading-normal opacity-90">
+            <h4 className="text-sm font-bold">Warnung vor irreversiblem Datenverlust</h4>
+            <p className="mt-1 text-xs leading-normal opacity-90">
               {isBulkClear
                 ? 'Du bist im Begriff, alle Aufgaben dieser Spalte dauerhaft zu löschen. Die Spalte selbst bleibt erhalten.'
                 : 'Du bist im Begriff, dieses Element dauerhaft zu löschen. Alle damit verbundenen Daten gehen unwiderruflich verloren.'}
@@ -50,20 +50,20 @@ export const DeleteConfirm = ({
         </div>
 
         {/* Target Details Box */}
-        <div className="rounded-lg border border-border bg-secondary/35 p-3 font-mono text-xs">
-          <div className="text-muted-foreground uppercase text-[10px] tracking-wider mb-1 font-bold">Löschobjekt Details</div>
+        <div className="rounded-xl border border-border/60 bg-secondary/30 p-3 font-mono text-xs">
+          <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Löschobjekt Details</div>
           <div className="flex justify-between gap-2">
             <span className="text-muted-foreground">Typ:</span>
             <span className="font-semibold text-foreground">{label}</span>
           </div>
-          <div className="flex justify-between gap-2 mt-1">
+          <div className="mt-1 flex justify-between gap-2">
             <span className="text-muted-foreground">Name:</span>
-            <span className="font-semibold text-foreground truncate max-w-[200px]" title={itemName}>
+            <span className="max-w-[200px] truncate font-semibold text-foreground" title={itemName}>
               {itemName}
             </span>
           </div>
           {isBulkClear && (
-            <div className="flex justify-between gap-2 mt-1">
+            <div className="mt-1 flex justify-between gap-2">
               <span className="text-muted-foreground">Anzahl Aufgaben:</span>
               <span className="font-semibold text-foreground">{cardCount ?? 0}</span>
             </div>
@@ -75,7 +75,7 @@ export const DeleteConfirm = ({
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button variant="danger" onClick={onConfirm} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+          <Button variant="danger" onClick={onConfirm}>
             {isBulkClear ? 'Spalte leeren' : 'Löschen bestätigen'}
           </Button>
         </div>

@@ -67,7 +67,7 @@ export const ColumnForm = ({
 
         {/* Color Indicator Selector */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-muted-foreground">
+          <label className="mb-2 block text-sm font-medium text-foreground">
             Farbindikator
           </label>
           <div className="grid grid-cols-4 gap-2">
@@ -76,10 +76,10 @@ export const ColumnForm = ({
                 key={opt.value}
                 type="button"
                 onClick={() => setColor(opt.value)}
-                className={`flex flex-col items-center gap-1.5 rounded-lg border p-2 text-[10px] font-semibold transition-all ${
+                className={`flex flex-col items-center gap-1.5 rounded-xl border p-2 text-[10px] font-semibold transition-all duration-200 ${
                   color === opt.value
-                    ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/20'
-                    : 'border-border bg-background/50 hover:bg-accent text-muted-foreground'
+                    ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/15'
+                    : 'border-border bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                 }`}
               >
                 <span className={`h-4.5 w-4.5 rounded-full ${opt.value} border border-black/10`} />
@@ -91,21 +91,21 @@ export const ColumnForm = ({
 
         {/* Category Key Selector */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-muted-foreground">
+          <label className="mb-2 block text-sm font-medium text-foreground">
             Spaltenkategorie
           </label>
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value as CategoryKey)}
-            className="w-full rounded-lg border border-input bg-background/50 p-3 text-sm text-foreground transition-all focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="form-input"
           >
             {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-              <option key={key} value={key} className="bg-background text-foreground">
+              <option key={key} value={key} className="bg-card text-foreground">
                 {label}
               </option>
             ))}
           </select>
-          <p className="mt-1 text-[10px] text-muted-foreground leading-normal">
+          <p className="mt-1.5 text-[10px] leading-normal text-muted-foreground">
             Kategorien helfen bei automatischen Berechnungen und Statuswechseln (z.B. Fertigstellungsdatum).
           </p>
         </div>

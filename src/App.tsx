@@ -251,19 +251,21 @@ const App = () => {
     return list
   }, [boards, activeBoardId, activeBoard, toggleTheme, clearFilters])
   return (
-    <div className={`relative z-10 min-h-screen font-sans transition-colors duration-700 ${darkMode ? 'dark' : ''}`}>
-      <div className="fixed inset-0 -z-10 bg-background transition-colors duration-700" />
+    <div className={`relative z-10 min-h-screen font-sans transition-colors duration-500 ${darkMode ? 'dark' : ''}`}>
+      {/* Atmospheric background layers */}
+      <div className="fixed inset-0 -z-30 bg-background transition-colors duration-500" />
       <div
-        className={`fixed inset-0 -z-10 bg-mesh-light transition-opacity duration-700 ${
+        className={`fixed inset-0 -z-30 bg-mesh-light transition-opacity duration-500 ${
           darkMode ? 'opacity-0 pointer-events-none' : 'opacity-100'
         }`}
       />
       <div
-        className={`fixed inset-0 -z-10 bg-mesh transition-opacity duration-700 ${
+        className={`fixed inset-0 -z-30 bg-mesh transition-opacity duration-500 ${
           darkMode ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       />
-      <div className="fixed inset-0 -z-10 bg-dot-grid opacity-50 pointer-events-none transition-opacity duration-700" />
+      <div className="fixed inset-0 -z-20 bg-dot-grid opacity-40 pointer-events-none transition-opacity duration-500" />
+      <div className={`fixed inset-0 -z-10 bg-noise transition-opacity duration-500 ${darkMode ? 'opacity-60' : 'opacity-40'}`} />
 
       <div className="mx-auto flex h-screen max-w-[1800px] flex-col p-4 md:p-6 lg:p-8">
         <Header
@@ -277,7 +279,7 @@ const App = () => {
           onImport={handleImport}
         />
 
-        <div className="flex flex-1 gap-6 overflow-hidden">
+        <div className="flex flex-1 gap-5 overflow-hidden">
           <Sidebar
             board={activeBoard}
             deletedCount={deletedCount}
@@ -320,8 +322,8 @@ const App = () => {
             )}
 
             {activeBoard ? (
-              <div className="flex-1 overflow-x-auto overflow-y-hidden rounded-3xl glass-panel p-6 custom-scrollbar">
-                <div className="flex h-full min-w-max gap-6">
+              <div className="surface-panel flex-1 overflow-x-auto overflow-y-hidden rounded-3xl p-5 custom-scrollbar transition-colors duration-500">
+                <div className="flex h-full min-w-max gap-5">
                   {visibleColumns.map((col) => (
                     <BoardColumn
                       key={col.id}
@@ -382,24 +384,24 @@ const App = () => {
                     />
                   ))}
 
-                  <div className="pt-4">
+                  <div className="pt-3">
                     <button
                       type="button"
                       onClick={() => setModal({ type: 'createColumn' })}
-                      className="flex h-12 w-12 items-center justify-center rounded-xl border-2 border-dashed border-border bg-secondary/30 text-muted-foreground transition-all hover:border-primary hover:bg-background hover:text-primary hover:shadow-lg"
+                      className="flex h-11 w-11 items-center justify-center rounded-xl border-2 border-dashed border-border bg-secondary/40 text-muted-foreground transition-all duration-200 hover:border-primary/60 hover:bg-accent hover:text-primary hover:shadow-surface active:scale-95"
                       title="Spalte hinzufügen"
                     >
-                      <Plus size={24} />
+                      <Plus size={22} />
                     </button>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="flex flex-1 flex-col items-center justify-center rounded-3xl glass-panel text-muted-foreground">
-                <div className="mb-6 rounded-full bg-secondary p-8">
-                  <Layout size={48} className="text-primary/50" />
+              <div className="surface-panel flex flex-1 flex-col items-center justify-center text-muted-foreground transition-colors duration-500">
+                <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary/60 ring-8 ring-primary/5">
+                  <Layout size={36} />
                 </div>
-                <h2 className="mb-2 text-xl font-bold text-foreground">Kein Projekt ausgewählt</h2>
+                <h2 className="mb-2 font-display text-xl font-semibold text-foreground">Kein Projekt ausgewählt</h2>
                 <p className="mb-6 max-w-xs text-center text-sm">
                   Erstelle ein neues Projekt, um mit der Arbeit an deinen Aufgaben zu beginnen.
                 </p>

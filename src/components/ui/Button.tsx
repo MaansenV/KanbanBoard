@@ -19,18 +19,12 @@ export const Button = ({
   type = 'button',
   title,
 }: ButtonProps) => {
-  const baseStyle =
-    'px-4 py-2 text-sm font-medium transition-all duration-200 flex items-center gap-2 select-none disabled:opacity-50 disabled:cursor-not-allowed rounded-lg active:scale-95'
-  const variants: Record<string, string> = {
-    primary:
-      'bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/25',
-    secondary:
-      'bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border shadow-sm',
-    danger:
-      'bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20',
-    ghost:
-      'bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-    icon: 'p-2 rounded-full hover:bg-accent text-muted-foreground hover:text-foreground',
+  const variantClass: Record<string, string> = {
+    primary: 'btn-primary',
+    secondary: 'btn-secondary',
+    danger: 'btn-danger',
+    ghost: 'btn-ghost',
+    icon: 'btn-icon',
   }
 
   return (
@@ -39,7 +33,7 @@ export const Button = ({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`${baseStyle} ${variants[variant]} ${className}`}
+      className={`${variantClass[variant]} ${className}`}
     >
       {children}
     </button>

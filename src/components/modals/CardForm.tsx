@@ -123,18 +123,18 @@ export const CardForm = ({
 
         {/* Priority Selector */}
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-muted-foreground">
+          <label className="mb-2 block text-sm font-medium text-foreground">
             Priorität
           </label>
           <select
             value={priority}
             onChange={(e) => setPriority(e.target.value as PriorityKey)}
-            className="w-full rounded-lg border border-input bg-background/50 p-3 text-sm text-foreground transition-all focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="form-input"
           >
             {(Object.keys(PRIORITIES) as PriorityKey[]).map((key) => {
               const config = PRIORITIES[key]
               return (
-                <option key={key} value={key} className="bg-background text-foreground">
+                <option key={key} value={key} className="bg-card text-foreground">
                   {config.label}
                 </option>
               )
@@ -144,28 +144,28 @@ export const CardForm = ({
 
         {/* Subtasks Checklist Builder */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-muted-foreground">
+          <label className="block text-sm font-medium text-foreground">
             Unteraufgaben (Checkliste)
           </label>
-          
+
           {/* Subtask list */}
           {subtasks.length > 0 && (
-            <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar border border-border/40 rounded-lg p-2 bg-secondary/15">
+            <div className="custom-scrollbar max-h-40 space-y-2 overflow-y-auto rounded-xl border border-border/40 bg-secondary/20 p-2">
               {subtasks.map((sub, idx) => (
                 <div key={sub.id} className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground font-mono w-4">
+                  <span className="w-4 font-mono text-xs text-muted-foreground">
                     {idx + 1}.
                   </span>
                   <input
                     type="text"
                     value={sub.title}
                     onChange={(e) => handleSubtaskTitleChange(sub.id, e.target.value)}
-                    className="flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/20"
+                    className="form-input flex-1 px-2.5 py-1.5 text-xs"
                   />
                   <button
                     type="button"
                     onClick={() => handleRemoveSubtask(sub.id)}
-                    className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
+                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive shrink-0"
                     title="Unteraufgabe löschen"
                   >
                     <Trash2 size={13} />
@@ -188,7 +188,7 @@ export const CardForm = ({
                 }
               }}
               placeholder="Unteraufgabe hinzufügen..."
-              className="flex-1 rounded-lg border border-input bg-background/50 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="form-input flex-1 px-3 py-2 text-xs"
             />
             <Button
               type="button"

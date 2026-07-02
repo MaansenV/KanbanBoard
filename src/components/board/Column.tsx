@@ -55,28 +55,28 @@ export const Column = ({
         e.stopPropagation()
         handleDropColumn(column.id)
       }}
-      className="group flex h-full w-80 flex-col rounded-2xl bg-secondary/30 ring-1 ring-border text-left select-none transition-all duration-700"
+      className="group flex h-full w-80 flex-col rounded-2xl border border-border/50 bg-secondary/40 ring-1 ring-border text-left select-none transition-all duration-300 hover:border-border hover:bg-secondary/50"
     >
       {/* Column Header */}
       <div className="flex cursor-grab items-center justify-between p-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className={`h-3 w-3 rounded-full shrink-0 ${column.color}`} />
-          <span className="font-bold text-foreground truncate">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className={`h-3 w-3 shrink-0 rounded-full ${column.color}`} />
+          <span className="truncate font-bold text-foreground">
             {column.title}
           </span>
-          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-background/50 px-1.5 text-xs font-mono font-bold text-muted-foreground">
+          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-background/70 px-1.5 font-mono text-xs font-bold text-muted-foreground">
             {hasActiveFilters && column.cards.length !== column.totalCards
               ? `${column.cards.length}/${column.totalCards}`
               : column.totalCards}
           </span>
         </div>
-        
+
         {/* Column Actions (Edit & Delete) */}
-        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex gap-0.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           <button
             type="button"
             onClick={() => onEditColumn(column.sourceColumn)}
-            className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             title="Spalte bearbeiten"
           >
             <MoreHorizontal size={16} />
@@ -85,7 +85,7 @@ export const Column = ({
             type="button"
             onClick={() => onClearColumn(column.id)}
             disabled={column.totalCards === 0}
-            className="rounded p-1 text-muted-foreground hover:bg-orange-500/10 hover:text-orange-500 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground disabled:cursor-not-allowed"
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-orange-500/10 hover:text-orange-500 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
             title={column.totalCards === 0 ? 'Spalte ist bereits leer' : `Alle ${column.totalCards} Aufgaben leeren`}
           >
             <Eraser size={16} />
@@ -93,7 +93,7 @@ export const Column = ({
           <button
             type="button"
             onClick={() => onDeleteColumn(column.id)}
-            className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
             title="Spalte löschen"
           >
             <Trash2 size={16} />
@@ -130,7 +130,7 @@ export const Column = ({
         ))}
 
         {column.cards.length === 0 && (
-          <div className="flex h-32 flex-col items-center justify-center rounded-xl border-2 border-dashed border-border text-sm font-medium text-muted-foreground p-4 text-center">
+          <div className="flex h-32 flex-col items-center justify-center rounded-xl border-2 border-dashed border-border p-4 text-center text-sm font-medium text-muted-foreground">
             <div className="mb-2 rounded-full bg-secondary p-3">
               <Calendar size={20} className="text-muted-foreground" />
             </div>
@@ -148,7 +148,7 @@ export const Column = ({
         <button
           type="button"
           onClick={() => onAddCard(column.id)}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border py-2.5 text-sm font-medium text-muted-foreground transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card/40 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:border-primary/50 hover:bg-primary/5 hover:text-primary active:scale-95"
         >
           <Plus size={16} /> Aufgabe hinzufügen
         </button>

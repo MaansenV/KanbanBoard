@@ -87,21 +87,8 @@ ${subtasksText}`
         e.stopPropagation()
         handleDropCard(columnId, originalIndex)
       }}
-      className="group/card relative overflow-hidden cursor-grab rounded-xl border border-border/60 bg-card/60 backdrop-blur-md p-4 pl-5 shadow-sm transition-all duration-700 hover:duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-card/90 hover:shadow-md hover:shadow-primary/5 select-none text-left"
+      className={`group/card glass-card relative cursor-grab p-4 pl-5 text-left select-none ${priorityInfo?.accentClass || ''}`}
     >
-      {/* Left Priority Accent Stripe */}
-      <div
-        className={`absolute left-0 top-0 bottom-0 w-[4px] rounded-l-xl ${
-          card.priority === 'critical'
-            ? 'bg-rose-500'
-            : card.priority === 'high'
-              ? 'bg-amber-500'
-              : card.priority === 'medium'
-                ? 'bg-blue-500'
-                : 'bg-emerald-500'
-        }`}
-      />
-
       {/* Priority Badge & Actions */}
       <div className="mb-3 flex items-start justify-between gap-3">
         <span
@@ -111,7 +98,7 @@ ${subtasksText}`
           <span>{priorityInfo?.label}</span>
         </span>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           {/* Fold toggle */}
           <button
             type="button"
@@ -120,13 +107,13 @@ ${subtasksText}`
               e.stopPropagation()
               onFoldToggle(card.id)
             }}
-            className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+            className="inline-flex rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           >
             {isFolded ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
           </button>
 
           {/* Edit/Copy/Delete actions - visible on hover */}
-          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100">
+          <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover/card:opacity-100 focus-within:opacity-100">
             <button
               type="button"
               title="Aufgabe bearbeiten"
@@ -134,7 +121,7 @@ ${subtasksText}`
                 e.stopPropagation()
                 onEditCard(columnId, card)
               }}
-              className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+              className="inline-flex rounded-md p-1 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
             >
               <Edit2 size={14} />
             </button>
@@ -142,7 +129,7 @@ ${subtasksText}`
               type="button"
               title={copied ? 'Kopiert!' : 'Aufgabe in Zwischenablage kopieren (Markdown)'}
               onClick={handleCopyToClipboard}
-              className={`inline-flex rounded p-1 transition-colors ${
+              className={`inline-flex rounded-md p-1 transition-colors ${
                 copied ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
               }`}
             >
@@ -150,12 +137,12 @@ ${subtasksText}`
             </button>
             <button
               type="button"
-              title="Aufgabe  löschen"
+              title="Aufgabe löschen"
               onClick={(e) => {
                 e.stopPropagation()
                 onDeleteCard(columnId, card.id)
               }}
-              className="inline-flex rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+              className="inline-flex rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
             >
               <Trash2 size={14} />
             </button>
@@ -164,13 +151,13 @@ ${subtasksText}`
       </div>
 
       {/* Card Title */}
-      <h4 className={`mb-2 font-semibold text-card-foreground text-sm tracking-tight ${isFolded ? 'line-clamp-2' : ''}`}>
+      <h4 className={`mb-2 text-sm font-semibold tracking-tight text-card-foreground ${isFolded ? 'line-clamp-2' : ''}`}>
         {card.title}
       </h4>
 
       {/* Description */}
       {!isFolded && card.description && (
-        <p className="text-xs leading-relaxed text-muted-foreground mb-3 font-normal">
+        <p className="mb-3 text-xs font-normal leading-relaxed text-muted-foreground">
           {card.description}
         </p>
       )}
@@ -178,13 +165,13 @@ ${subtasksText}`
       {/* Subtask Progress Bar */}
       {!isFolded && subtaskCount > 0 && (
         <div className="mt-3 space-y-1.5">
-          <div className="flex justify-between items-center text-[10px] text-muted-foreground font-mono">
+          <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground">
             <span>Fortschritt</span>
             <span>{progressPercent}%</span>
           </div>
-          <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden border border-border/20">
+          <div className="progress-track">
             <div
-              className="h-full bg-gradient-to-r from-primary to-blue-400 transition-all duration-300 ease-out"
+              className="progress-fill"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
@@ -200,9 +187,9 @@ ${subtasksText}`
       )}
 
       {/* Footer */}
-      <div className="mt-3 flex items-center justify-between border-t border-border/50 pt-3">
-        <div className="flex items-center gap-2 text-[10px] font-medium text-muted-foreground font-mono">
-          <span className="rounded bg-secondary/80 border border-border/40 px-1.5 py-0.5 text-[9px] font-mono text-muted-foreground">
+      <div className={`mt-3 flex items-center gap-2 border-t border-border/50 pt-3 text-[10px] font-mono font-medium text-muted-foreground ${subtaskCount > 0 ? 'justify-between' : 'justify-center'}`}>
+        <div className="flex items-center gap-2">
+          <span className="rounded-md border border-border/50 bg-secondary/80 px-1.5 py-0.5 text-[9px]">
             #{card.id.slice(0, 4)}
           </span>
           {subtaskCount > 0 && (
@@ -214,14 +201,17 @@ ${subtasksText}`
             </div>
           )}
           {isFolded && subtaskCount > 0 && (
-            <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px]">
+            <span className="rounded-md bg-secondary px-1.5 py-0.5 text-[9px]">
               {progressPercent}%
             </span>
           )}
         </div>
 
         {card.createdAt && (
-          <span className="text-[9px] text-muted-foreground/50 font-mono">
+          <span className="flex items-center gap-2 text-[9px] text-muted-foreground/60">
+            {subtaskCount === 0 && (
+              <span className="text-muted-foreground/30">·</span>
+            )}
             {new Date(card.createdAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
           </span>
         )}
