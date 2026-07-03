@@ -10,11 +10,9 @@ type ModalProps = {
 
 export const Modal = ({ isOpen, onClose, title, children }: ModalProps) => {
   if (!isOpen) return null
+  // ponytail: no backdrop-click dismiss — prevents losing form input on accidental clicks; close via X / Abbrechen
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-sm animate-fade-in"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-sm animate-fade-in">
       <div
         className="w-full max-w-md rounded-2xl surface-card p-6 animate-scale-in shadow-panel"
         role="dialog"
